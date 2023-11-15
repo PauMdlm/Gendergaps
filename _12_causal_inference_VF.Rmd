@@ -1,0 +1,325 @@
+---
+title: "Data Management of DEPP cohort Evalaide - Causal Inference"
+author:
+  - Pauline Martinot [UNICOG, NeuroSpin]
+  - Bénédicte Colnet [Inria, Paris-Saclay]
+date: "July 2021"
+output:
+  html_document:
+    number_sections: no
+    toc: yes
+    toc_depth: 2
+  pdf_document:
+    toc: yes
+abstract: | 
+  This notebook concerns data from National assessment in 1st and 2nd grade in France : Causal Inference
+---
+
+# 2018
+
+
+```{r setup, include=FALSE, cache = TRUE}
+knitr::opts_chunk$set(echo = TRUE)
+
+# Seed because application of PCA on a random sample
+set.seed(123)
+
+
+# Parameters to set before launch of the pipeline
+IMPUTED = "imputed" # "imputed" "non-imputed"
+ANNEE_COHORTE = "2018" 
+# SUBSET_SIZE = 10000
+# FASTER = TRUE
+
+# Libraries
+library(ggplot2)   # plot
+library(grf)       # generalized random forests
+library(sandwich)  # for robust CIs
+library(devtools)  # install from GitHub 
+library(dplyr)
+```
+
+
+Matching should be done on
+- joined_n
+- on T1_Math and T3_Math
+
+
+```{r}
+# Loading
+
+load(file = paste0("~/Data/cohort_", ANNEE_COHORTE, "_", IMPUTED, "_ModRegLin_Gau_From_joined_complete_VF.RData")) # DATA_AGE_gau_Base_n
+
+joined_n <- DATA_AGE_gau_Base_n
+
+rm(DATA_AGE_gau_Base_30n, joined, Joined_Fin_3)
+
+```
+
+
+# Pretreatment
+
+```{r}
+# Girl = 1
+joined_n$Sexe_Boys <- ifelse(joined_n$Sexe_Boys == "Girls", 0, 1)
+```
+
+
+```{r}
+
+Math_T1_P <- c("T1_Ecri_Nombre_P" , "T1_Resoud_Pb_P" ,   "T1_Denombrer_P"  ,  "T1_Compa_Nombre_P", "T1_Ligne_Num_P"  )
+# Covariates used to adjust
+continuous_variables_names <- c("IPS_Etab_CP", "Age_CP", "Taille_Classe", Math_T1_P, Lang_T1_P) 
+
+categorical_variables_names <- c("Categ_Etab_CP")
+
+covariates <- c(continuous_variables_names, categorical_variables_names)
+
+all_variables_names <- c(covariates, "T3_Math", "Sexe_Boys")
+
+# Extracting and scaling continuous variables
+
+scaled_continuous_covariates <- scale(joined_n[,continuous_variables_names])
+
+# Extracting indicator variables
+categorical_covariates <- joined_n[,categorical_variables_names]
+
+# Extracting outcome and treatment
+outcome <- joined_n$T3_Math
+#outcome <- joined_n$T3_Language
+treatment <- joined_n$Sexe_Boys
+
+# Setting up the data, renaming columns
+df <- data.frame(scaled_continuous_covariates, Categ_Etab_CP = categorical_covariates, W = treatment, Y = outcome)
+```
+
+
+```{r}
+dim(df)
+summary(df)
+```
+
+
+```{r}
+# save local memory
+rm(scaled_continuous_covariates)
+rm(joined_n)
+
+```
+
+
+# Naive difference in means
+
+```{r}
+difference_in_means <- function(dataset) {
+  treated_idx <- which(dataset$W == 0)
+  control_idx <- which(dataset$W == 1)
+  
+  # Filter treatment / control observations, pulls outcome variable as a vector
+  y1 <- dataset[treated_idx, "Y"] # Outcome in treatment grp
+  y0 <- dataset[control_idx, "Y"] # Outcome in control group
+  
+  n1 <- sum(df[,"W"])     # Number of obs in treatment
+  n0 <- sum(1 - df[,"W"]) # Number of obs in control
+  
+  # Difference in means is ATE
+  tauhat <- mean(y1) - mean(y0)
+  
+  # 95% Confidence intervals
+  se_hat <- sqrt( var(y0)/(n0-1) + var(y1)/(n1-1) )
+  lower_ci <- tauhat - 1.96 * se_hat
+  upper_ci <- tauhat + 1.96 * se_hat
+  
+  return(c(ATE = tauhat, lower_ci = lower_ci, upper_ci = upper_ci))
+}
+
+tauhat_rct <- difference_in_means(df)
+```
+
+```{r}
+print(tauhat_rct)
+```
+
+
+As expected, the amplitude of the difference is close to the difference found in the Anova.
+
+# Causal inference estimators
+
+
+```{r}
+X = df[,!names(df) %in% c("Y", "W")]
+Y = df$Y
+W = df$W
+```
+
+
+## (1) Naive G-computation
+
+```{r}
+# naive g-computation
+ate_condmean_ols <- function(dataset) {
+  # Running OLS with full interactions is like running OLS separately on
+  # the treated and controls. If the design matrix has been pre-centered,
+  # then the W-coefficient corresponds to the ATE.
+  lm.interact = lm(Y ~ . * W, data = dataset)
+  tau.hat = as.numeric(coef(lm.interact)["W"])
+  se.hat = as.numeric(sqrt(vcovHC(lm.interact)["W", "W"]))
+  c(ATE=tau.hat, lower_ci = tau.hat - 1.96 * se.hat, upper_ci = tau.hat + 1.96 * se.hat)
+}
+
+tauhat_ols <- ate_condmean_ols(df)
+print(tauhat_ols)
+```
+
+## (2) IPW with logistic regression
+
+```{r}
+# Computing the propensity score by logistic regression of W on X.
+p_logistic.fit <- glm(W ~ ., family = "binomial", data = df[, c(covariates, "W")])
+
+p_logistic <- predict(p_logistic.fit, type = "response")
+
+ipw <- function(dataset, p) {
+  W <- dataset$W
+  Y <- dataset$Y
+  G <- ((W - p) * Y) / (p * (1 - p))
+  tau.hat <- mean(G)
+  se.hat <- sqrt(var(G) / (length(G) - 1))
+  c(ATE=tau.hat, lower_ci = tau.hat - 1.96 * se.hat, upper_ci = tau.hat + 1.96 * se.hat)
+}
+
+tauhat_logistic_ipw <- ipw(df, p_logistic)
+print(tauhat_logistic_ipw)
+```
+
+## (3) Weighted OLS
+
+```{r}
+prop_score_ols <- function(dataset, p) {
+  # Pulling relevant columns
+  W <- dataset$W
+  Y <- dataset$Y
+  # Computing weights
+  weights <- (W / p) + ((1 - W) / (1 - p))
+  # OLS
+  lm.fit <- lm(Y ~ W, data = dataset, weights = weights)
+  tau.hat = as.numeric(coef(lm.fit)["W"])
+  se.hat = as.numeric(sqrt(vcovHC(lm.fit)["W", "W"]))
+  c(ATE=tau.hat, lower_ci = tau.hat - 1.96 * se.hat, upper_ci = tau.hat + 1.96 * se.hat)
+}
+
+tauhat_pscore_ols <- prop_score_ols(df, p_logistic)
+print(tauhat_pscore_ols)
+```
+
+## 4) AIPW Doubly robust methods
+
+```{r}
+aipw_ols <- function(dataset, p) {
+  
+  ols.fit = lm(Y ~ W * ., data = dataset)
+  
+  dataset.treatall = dataset
+  dataset.treatall$W = 1
+  treated_pred = predict(ols.fit, dataset.treatall)
+  
+  dataset.treatnone = dataset
+  dataset.treatnone$W = 0
+  control_pred = predict(ols.fit, dataset.treatnone)
+  
+  actual_pred = predict(ols.fit, dataset)
+  
+  G <- treated_pred - control_pred +
+    ((dataset$W - p) * (dataset$Y - actual_pred)) / (p * (1 - p))
+  tau.hat <- mean(G)
+  se.hat <- sqrt(var(G) / (length(G) - 1))
+  c(ATE=tau.hat, lower_ci = tau.hat - 1.96 * se.hat, upper_ci = tau.hat + 1.96 * se.hat)
+}
+
+tauhat_lin_logistic_aipw <- aipw_ols(df, p_logistic)
+print(tauhat_lin_logistic_aipw)
+```
+
+
+## 5) Random forest - Non-parametric
+
+```{r}
+# grf does not support categorical covariates
+X_with_ordering <- X
+X_with_ordering$Categ_Etab_CP <- case_when(X_with_ordering$Categ_Etab_CP == "REP+" ~ 0,
+                                           X_with_ordering$Categ_Etab_CP == "REP" ~ 1,
+                                           X_with_ordering$Categ_Etab_CP == "Public" ~ 2,
+                                           X_with_ordering$Categ_Etab_CP == "Private" ~ 3)
+
+# train causal forest
+
+cf <- causal_forest(X_with_ordering, Y, W, num.trees = 500)
+
+p_rf = cf$W.hat
+
+# This approach does not use orthogonal moments, and so is not recommended
+tauhat_rf_ipw <- ipw(df, p_rf)
+tauhat_rf_ipw
+```
+
+
+```{r}
+ate_cf_aipw <- average_treatment_effect(cf)
+tauhat_rf_aipw <- c(ATE=ate_cf_aipw["estimate"],
+                   lower_ci=ate_cf_aipw["estimate"] - 1.96 * ate_cf_aipw["std.err"],
+                   upper_ci=ate_cf_aipw["estimate"] + 1.96 * ate_cf_aipw["std.err"])
+tauhat_rf_aipw
+```
+
+```{r}
+tauhat_ols_rf_aipw <- aipw_ols(df, p_rf)
+tauhat_ols_rf_aipw
+```
+
+
+
+## 6) TMLE
+
+```{r}
+
+library(tmle)
+library(SuperLearner)
+
+#SL.library<- c("SL.glm", "SL.glm.interaction", "SL.glmnet", "SL.ranger")
+SL.library<- c("SL.glm", "SL.glmnet")
+
+TMLE <- tmle(Y = Y,
+            A = W,
+            W = X,
+            family = "gaussian",
+            Q.SL.library = SL.library,
+            g.SL.library = SL.library)
+
+TMLE$estimates$ATE
+```
+
+## 7) All our estimators
+
+```{r}
+all_estimators <- rbind(
+  RCT = tauhat_rct,
+  linear_regression = tauhat_ols,
+  propensity_weighted_regression = tauhat_pscore_ols,
+  IPW_logistic = tauhat_logistic_ipw,
+  AIPW_linear_plus_logistic = tauhat_lin_logistic_aipw,
+  IPW_forest = tauhat_rf_ipw,
+  AIPW_forest = tauhat_rf_aipw,
+  AIPW_linear_plus_forest = tauhat_ols_rf_aipw,
+  TMLE = c("ATE" = TMLE$estimates$ATE$psi, "lower_ci" = TMLE$estimates$ATE$CI[[1]],"upper_ci" = TMLE$estimates$ATE$CI[[2]] ))
+  all_estimators <- data.frame(all_estimators)
+  all_estimators$ci_length <- all_estimators$upper_ci - all_estimators$lower_ci
+
+
+round(as.matrix(all_estimators), 4)
+
+AA <- as.data.frame(round(as.matrix(all_estimators), 3))
+
+write.csv(AA, paste0("~/table/Table_Causal_inference_", ANNEE_COHORTE, "_.csv"), row.names = TRUE)
+```
+
+

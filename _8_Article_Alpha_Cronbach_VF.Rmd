@@ -1,0 +1,218 @@
+---
+title: "Alpha Cronbach"
+author: "Pauline MARTINOT"
+date: "Juin 2023"
+output: html_document
+---
+
+
+# Alpha Omega
+
+Cronbach's alpha and McDonald's omega are widely used reliability or internal consistency measures in social, behavioral and education sciences. 
+
+Alpha is reported in nearly every study that involves measuring a construct through multiple test items. 
+
+The package 'coefficientalpha' calculates coefficient alpha and coefficient omega with missing data and non normal data. Robust standard errors and confidence intervals are also provided. A test is also available to test the tau-equivalent and homogeneous assumptions.
+
+
+Cronbach's alpha and McDonald's omega are widely used reliability or internal consistency measures in social, behavioral and education sciences. 
+
+Alpha is reported in nearly every study that involves measuring a construct through multiple test items. 
+
+The package 'coefficientalpha' calculates coefficient alpha and coefficient omega with missing data and non normal data. Robust standard errors and confidence intervals are also provided. A test is also available to test the tau-equivalent and homogeneous assumptions.
+
+```{r}
+knitr::opts_chunk$set(echo = TRUE)
+
+# Parameters to set before launch of the pipeline
+# 
+# ANNEE_COHORTE = "2021" # 2019 # 2020
+
+knitr::opts_chunk$set(echo = TRUE, include = TRUE)
+
+library(tidyverse)
+library(dplyr)
+library(ggplot2)
+library(reshape2)
+library(corrplot)
+# install.packages("coefficientalpha")
+# library(coefficientalpha)
+library(psych)
+
+load("~/Data/cohort_2018_imputed_joined_n.RData")
+
+DATA_2018 <- joined_n[, c("ID_Eleve", "T1_Ecri_Nombre", "T1_Lire_Nombre", "T1_Resoud_Pb",
+                          "T1_Denombrer", "T1_Compa_Nombre","T1_Ligne_Num", "T2_Compa_Nombre",
+                          "T2_Ligne_Num", "T2_Addition", "T2_Soustract", "T2_Ecri_Nombre", "T2_Resoud_Pb",
+                          "T3_Assemblage", "T3_Ligne_Num", "T3_Addition","T3_Soustract", "T3_Calcul_Mental", "T3_Ecri_Nombre")]
+rm(joined_n)
+
+load("~/Data/cohort_2019_imputed_joined_n.RData")
+
+DATA_2019 <- joined_n[, c("ID_Eleve", "T1_Ecri_Nombre", "T1_Lire_Nombre", "T1_Resoud_Pb",
+                          "T1_Denombrer", "T1_Compa_Nombre","T1_Ligne_Num", "T2_Compa_Nombre",
+                          "T2_Ligne_Num", "T2_Addition", "T2_Soustract", "T2_Ecri_Nombre", "T2_Resoud_Pb",
+                          "T3_Assemblage", "T3_Ligne_Num", "T3_Addition","T3_Soustract", "T3_Calcul_Mental", "T3_Ecri_Nombre")]
+rm(joined_n)
+
+load("~/Data/cohort_2020_imputed_joined_n.RData")
+DATA_2020 <- joined_n[, c("ID_Eleve", "T1_Ecri_Nombre", "T1_Lire_Nombre", "T1_Resoud_Pb",
+                          "T1_Denombrer", "T1_Compa_Nombre","T1_Ligne_Num", "T2_Compa_Nombre",
+                          "T2_Ligne_Num", "T2_Addition", "T2_Soustract", "T2_Ecri_Nombre", "T2_Resoud_Pb",
+                          "T3_Assemblage", "T3_Ligne_Num", "T3_Addition","T3_Soustract", "T3_Calcul_Mental", "T3_Ecri_Nombre")]
+rm(classes, DATA_AGE_gau_Base_30n, DATA_AGE_gau_Base_n, data_depp, joined, Joined_Fin_3, joined30, joined30_n, joined_n,  m1, model1)
+
+load("~/Data/cohort_2021_imputed_joined_n.RData")
+DATA_2021 <- joined_n[, c("ID_Eleve", "T1_Ecri_Nombre", "T1_Lire_Nombre", "T1_Resoud_Pb",
+                          "T1_Denombrer", "T1_Compa_Nombre","T1_Ligne_Num", "T2_Compa_Nombre",
+                          "T2_Ligne_Num", "T2_Addition", "T2_Soustract", "T2_Ecri_Nombre", "T2_Resoud_Pb",
+                          "T3_Assemblage", "T3_Ligne_Num", "T3_Addition","T3_Soustract", "T3_Calcul_Mental", "T3_Ecri_Nombre")]
+rm(classes, DATA_AGE_gau_Base_30n, DATA_AGE_gau_Base_n, data_depp, joined, Joined_Fin_3, joined30, joined30_n, joined_n)
+
+
+
+
+```
+
+
+
+Cronbach's alpha and McDonald's omega are widely used reliability or internal consistency measures in social, behavioral and education sciences. 
+
+Alpha is reported in nearly every study that involves measuring a construct through multiple test items. 
+
+The package 'coefficientalpha' calculates coefficient alpha and coefficient omega with missing data and non normal data. Robust standard errors and confidence intervals are also provided. A test is also available to test the tau-equivalent and homogeneous assumptions.
+
+### Data
+
+```{r}
+
+Math_T1 <- c("T1_Ecri_Nombre", "T1_Lire_Nombre", "T1_Resoud_Pb","T1_Denombrer", "T1_Compa_Nombre","T1_Ligne_Num")
+
+Math_T2 <- c("T2_Compa_Nombre", "T2_Ligne_Num", "T2_Addition", "T2_Soustract", "T2_Ecri_Nombre", "T2_Resoud_Pb")
+
+Math_T3 <- c("T3_Assemblage", "T3_Ligne_Num", "T3_Addition","T3_Soustract", "T3_Calcul_Mental", "T3_Ecri_Nombre")
+
+```
+
+
+
+### Alpha : Pop restreinte
+
+```{r}
+
+# Math T1
+
+DATA_essai_T1       <- DATA_2018[ , c(Math_T1)]
+DATA_restreinte_T1  <- sample_n(DATA_essai_T1, 50000) # sélectionner les 100 k 
+resA_T1_2018        <- alpha(DATA_restreinte_T1, varphi = 0.1, se = FALSE) 
+
+# Math T2
+
+DATA_essai_T2       <- DATA_2018[ , c(Math_T2)]
+DATA_restreinte_T2  <- sample_n(DATA_essai_T2, 50000) # sélectionner les 100 k 
+resA_T2_2018        <- alpha(DATA_restreinte_T2, varphi = 0.1, se = FALSE) 
+
+# Math T3
+
+DATA_essai_T3       <- DATA_2018[ , c(Math_T3)]
+DATA_restreinte_T3  <- sample_n(DATA_essai_T3, 50000) # sélectionner les 100 k 
+resA_T3_2018        <- alpha(DATA_restreinte_T3, varphi = 0.1, se = FALSE) 
+
+
+
+# Math T1
+
+DATA_essai_T1       <- DATA_2019[ , c(Math_T1)]
+DATA_restreinte_T1  <- sample_n(DATA_essai_T1, 50000) # sélectionner les 100 k 
+resA_T1_2019        <- alpha(DATA_restreinte_T1, varphi = 0.1, se = FALSE) 
+
+# Math T2
+
+DATA_essai_T2       <- DATA_2019[ , c(Math_T2)]
+DATA_restreinte_T2  <- sample_n(DATA_essai_T2, 50000) # sélectionner les 100 k 
+resA_T2_2019        <- alpha(DATA_restreinte_T2, varphi = 0.1, se = FALSE) 
+
+# Math T3
+
+DATA_essai_T3       <- DATA_2019[ , c(Math_T3)]
+DATA_restreinte_T3  <- sample_n(DATA_essai_T3, 50000) # sélectionner les 100 k 
+resA_T3_2019        <- alpha(DATA_restreinte_T3, varphi = 0.1, se = FALSE) 
+
+
+
+# Math T1
+
+DATA_essai_T1       <- DATA_2020[ , c(Math_T1)]
+DATA_restreinte_T1  <- sample_n(DATA_essai_T1, 50000) # sélectionner les 100 k 
+resA_T1_2020        <- alpha(DATA_restreinte_T1, varphi = 0.1, se = FALSE) 
+
+# Math T2
+
+DATA_essai_T2       <- DATA_2020[ , c(Math_T2)]
+DATA_restreinte_T2  <- sample_n(DATA_essai_T2, 50000) # sélectionner les 100 k 
+resA_T2_2020        <- alpha(DATA_restreinte_T2, varphi = 0.1, se = FALSE) 
+
+# Math T3
+
+DATA_essai_T3       <- DATA_2020[ , c(Math_T3)]
+DATA_restreinte_T3  <- sample_n(DATA_essai_T3, 50000) # sélectionner les 100 k 
+resA_T3_2020        <- alpha(DATA_restreinte_T3, varphi = 0.1, se = FALSE) 
+
+
+
+# Math T1
+
+DATA_essai_T1       <- DATA_2021[ , c(Math_T1)]
+DATA_restreinte_T1  <- sample_n(DATA_essai_T1, 50000) # sélectionner les 100 k 
+resA_T1_2021        <- alpha(DATA_restreinte_T1, varphi = 0.1, se = FALSE) 
+
+# Math T2
+
+DATA_essai_T2       <- DATA_2021[ , c(Math_T2)]
+DATA_restreinte_T2  <- sample_n(DATA_essai_T2, 50000) # sélectionner les 100 k 
+resA_T2_2021        <- alpha(DATA_restreinte_T2, varphi = 0.1, se = FALSE) 
+
+# Math T3
+
+DATA_essai_T3       <- DATA_2021[ , c(Math_T3)]
+DATA_restreinte_T3  <- sample_n(DATA_essai_T3, 50000) # sélectionner les 100 k 
+resA_T3_2021        <- alpha(DATA_restreinte_T3, varphi = 0.1, se = FALSE) 
+
+```
+
+### Omega : Pop restreinte
+
+```{r}
+
+# Math T1
+resO_T1_2018 <- omega(DATA_restreinte_T1, varphi = 0.1, se = FALSE) 
+# Math T2
+resO_T2_2018 <- omega(DATA_restreinte_T2, varphi = 0.1, se = FALSE) 
+# Math T3
+resO_T3_2018 <- omega(DATA_restreinte_T3, varphi = 0.1, se = FALSE)
+
+
+# Math T1
+resO_T1_2019 <- omega(DATA_restreinte_T1, varphi = 0.1, se = FALSE) 
+# Math T2
+resO_T2_2019 <- omega(DATA_restreinte_T2, varphi = 0.1, se = FALSE) 
+# Math T3
+resO_T3_2019 <- omega(DATA_restreinte_T3, varphi = 0.1, se = FALSE)
+
+
+# Math T1
+resO_T1_2020 <- omega(DATA_restreinte_T1, varphi = 0.1, se = FALSE) 
+# Math T2
+resO_T2_2020 <- omega(DATA_restreinte_T2, varphi = 0.1, se = FALSE) 
+# Math T3
+resO_T3_2020 <- omega(DATA_restreinte_T3, varphi = 0.1, se = FALSE)
+
+
+# Math T1
+resO_T1_2021 <- omega(DATA_restreinte_T1, varphi = 0.1, se = FALSE) 
+# Math T2
+resO_T2_2021 <- omega(DATA_restreinte_T2, varphi = 0.1, se = FALSE) 
+# Math T3
+resO_T3_2021 <- omega(DATA_restreinte_T3, varphi = 0.1, se = FALSE)
+
+```

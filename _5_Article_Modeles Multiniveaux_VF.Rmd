@@ -1,0 +1,487 @@
+---
+title: "2bis. Total 2_3_4 for 2019_2020"
+author:
+  - Pauline Martinot [UNICOG, NeuroSpin]
+date: "July 2023"
+output:
+  pdf_document:
+    toc: yes
+  html_document:
+    number_sections: no
+    toc: yes
+    toc_depth: 2
+abstract: | 
+  This notebook concerns data from National assessment in 1st and 2nd grade in France : Composite covariate creation. This notebook comes after the preprocessing notebook, and create all the composite covariates, along with normalization of grades, and creation of the rank covariates. The input can be either an imputed data set, or a data set filtered from the missing values as detailed in preprocess.
+---
+
+
+## Load DATA 
+
+Selected classes are 
+- from 6 to 27 children per class
+- with normal Age in first grade (69 to 80 mo included)
+- minimum with 30% of boys or 30% of girls = to be tested 
+
+
+
+Data from SCRIPT 3
+- joined
+- FROM : imputed_after_2_composite_covariate.RData
+- Math : mean in percentage 0 to 100
+
+Data from joined with Gaussianization
+- Joined_Fin_3
+- GAUSSIANIZED : Gaussianize function applied to all numerical variables
+
+Data from Joined_Fin_3 with selection on Normal age 
+- DATA_AGE_gau_Base_n
+
+Data from Joined_Fin_3 with _n and selection on 30% boys/girls
+- DATA_AGE_gau_Base_n_30n 
+
+
+```{r}
+knitr::opts_chunk$set(echo = TRUE)
+
+# Parameters to set before launch of the pipeline
+
+ANNEE_COHORTE = "2018" # 2019 #2020
+
+library(tidyverse)
+library(dplyr)
+library(reshape2)
+library(MatchIt)
+library(patchwork)
+library(lmerTest)
+library(glmertree)
+library(performance)
+library(broom)
+
+
+
+# load(file = paste0("~/Data/cohort_", ANNEE_COHORTE, "_imputed_ModRegLin_Article.RData"))
+
+load("~/Data/cohort_2018_imputed_ModRegLin_Gau_From_joined.RData")
+
+
+
+```
+
+```{r}
+
+glimpse(DATA_AGE_gau_Base_n)
+
+```
+
+ici essai avec population age normal = DATA_AGE_gau_Base_n
+
+
+# 1) T3 Math empty and progressive models
+
+
+```{r echo=TRUE}
+model1 <- lmer(T3_Math ~ 1 + (1 | ID_etab_class),
+                 data = DATA_AGE_gau_Base_n,  REML = FALSE)
+summary(model1)
+m1 <- coef(summary(model1))
+m1
+write.csv2(m1, file= paste0("~/table/MultiLevel_Model_", ANNEE_COHORTE, "_T3_Math_Empty_Class.csv"), row.names = F)
+
+model2 <- lmer(T3_Math ~ 1 + (1 + T1_Math | ID_etab_class),
+                 data = DATA_AGE_gau_Base_n,  REML = FALSE)
+summary(model2)
+m2 <- coef(summary(model2))
+m2
+write.csv2(m2, file= paste0("~/table/MultiLevel_Model_", ANNEE_COHORTE, "_T3_Math_Simple_m4.csv"), row.names = F)
+
+model3 <- lmer(T3_Math ~ 1 + (1 + Sexe_Num | ID_etab_class), 
+                 data = DATA_AGE_gau_Base_n,  REML = FALSE)
+summary(model3)
+m3 <- coef(summary(model3))
+m3
+write.csv2(m3, file= paste0("~/table/MultiLevel_Model_", ANNEE_COHORTE, "_T3_Math_Empty_GenderSexe_Num.csv"), row.names = F)
+
+model4 <- lmer(T3_Math ~ T1_Math + (1 + T1_Math | ID_etab_class), 
+                 data = DATA_AGE_gau_Base_n,  REML = FALSE)
+summary(model4)
+m4 <- coef(summary(model4))
+m4
+write.csv2(m4, file= paste0("~/table/MultiLevel_Model_", ANNEE_COHORTE, "_T3_Math_Empty_Math.csv"), row.names = F)
+
+model5 <- lmer(T3_Math ~ Sexe_Num + (1 + Sexe_Num | ID_etab_class), 
+                 data = DATA_AGE_gau_Base_n,  REML = FALSE)
+summary(model5)
+m5 <- coef(summary(model5))
+m5
+write.csv2(m4, file= paste0("~/table/MultiLevel_Model_", ANNEE_COHORTE, "_T3_Math_Empty_Math.csv"), row.names = F)
+
+model6 <- lmer(T3_Math ~ 1 + (1 + T1_Math + Sexe_Num | ID_etab_class), 
+                 data = DATA_AGE_gau_Base_n,  REML = FALSE)
+
+summary(model6)
+m6 <- coef(summary(model6))
+write.csv2(m6, file= paste0("~/table/MultiLevel_Model_", ANNEE_COHORTE, "_T3_Math_n_Mod1.csv"), row.names = F)
+
+rm(model1, model2, model3, model4, model5, model6)
+rm(m1, m2, m3, m4, m5, m6)
+
+# empty interactions
+
+model1 <- lmer(T3_Math ~ T1_Math*Sexe_Num +
+                 (1 | ID_etab_class), 
+                 data = DATA_AGE_gau_Base_n,  REML = FALSE)
+summary(model1)
+m1 <- coef(summary(model1))
+m1
+
+# empty interaction + T1Math random
+
+model2 <- lmer(T3_Math ~
+                 Sexe_Num*T1_Math +
+                 (1 + T1_Math | ID_etab_class), 
+                 data = DATA_AGE_gau_Base_n,  REML = FALSE)
+summary(model2)
+m2 <- coef(summary(model2))
+m2
+
+# empty interaction + Sexe_Num random
+
+model3 <- lmer(T3_Math ~
+                 Sexe_Num*T1_Math +
+                 (1 + Sexe_Num | ID_etab_class), 
+                 data = DATA_AGE_gau_Base_n,  REML = FALSE)
+summary(model3)
+m3 <- coef(summary(model3))
+m3
+
+# empty interaction + T1 math and Sexe_Num random
+
+model4 <- lmer(T3_Math ~
+                 Sexe_Num*T1_Math +
+                 (1 + T1_Math + Sexe_Num | ID_etab_class), 
+                 data = DATA_AGE_gau_Base_n,  REML = FALSE)
+summary(model4)
+m4 <- coef(summary(model4))
+m4
+
+### B. T3 Math = var indiv
+
+model2 <- lmer(T3_Math ~ 
+                 Age_CP +
+                 Sexe_Num +
+                 T1_Math +
+                 # T1_Language +
+                 (1 + T1_Math + Sexe_Num | ID_etab_class), 
+                 data = DATA_AGE_gau_Base_n,  REML = FALSE)
+
+summary(model2)
+m2 <- coef(summary(model2))
+write.csv2(m2, file= paste0("~/table/MultiLevel_Model_", ANNEE_COHORTE, "_T3_Math_n_Mod2.csv"), row.names = F)
+
+rm( m2)
+
+
+### C. T3 Math = var indiv + var collec
+
+model2 <- lmer(T3_Math ~ 
+                 Age_CP +
+                 Sexe_Num +
+                 T1_Math +
+                 # T1_Language +
+
+                 First_sexe_in_T1_Math +
+                 IPS_Etab_CP +
+                 Taille_Classe +
+                 boy_proportion +
+                 heterogeneity_T1_Math +
+                 
+                 (1 + T1_Math + Sexe_Num | ID_etab_class), 
+                 data = DATA_AGE_gau_Base_n,  REML = FALSE)
+
+summary(model2)
+m2 <- coef(summary(model2))
+write.csv2(m2, file= paste0("~/table/MultiLevel_Model_", ANNEE_COHORTE, "_T3_Math_n_Mod3.csv"), row.names = F)
+
+rm( m2)
+
+model2 <- lmer(T3_Math ~ 
+                 T1_Math +
+                 Sexe_Num +
+                 T1_Language +
+                 Age_CP +
+                 IPS_Etab_CP +
+                 First_sexe_in_T1_Math +
+                 boy_proportion +
+                 Taille_Classe +
+                 heterogeneity_T1_Math +
+                 
+                 Sexe_Num*Age_CP +
+                 Sexe_Num*T1_Math +
+                 Sexe_Num*T1_Language +
+                 Sexe_Num*heterogeneity_T1_Math +
+                 Sexe_Num*Taille_Classe +
+                 Sexe_Num*boy_proportion +
+                 Sexe_Num*First_sexe_in_T1_Math +
+                 Sexe_Num*IPS_Etab_CP +
+                 
+                 
+                 (1 + T1_Math + Sexe_Num | ID_etab_class), 
+                 data = DATA_AGE_gau_Base_n,  REML = FALSE)
+
+summary(model2)
+m2 <- coef(summary(model2))
+write.csv2(m2, file= paste0("~/table/MultiLevel_Model_", ANNEE_COHORTE, "_T3_Math_n_Mod4.csv"), row.names = F)
+
+rm( m2)
+
+```
+
+
+
+# Math models 
+
+
+
+# 1) T1 Math
+
+
+```{r}
+
+model1 <- lmer(T1_Math ~
+
+                 Age_CP +
+                 Sexe_Num +
+                 # T1_Language +
+                 IPS_Etab_CP +
+                 Taille_Classe +
+                 boy_proportion +
+                 # First_sexe_in_T1_Math +
+                 
+                 Sexe_Num*Age_CP +
+                 # Sexe_Num*T1_Language +
+                 # Sexe_Num*First_sexe_in_T1_Math +
+                 Sexe_Num*IPS_Etab_CP +
+                 Sexe_Num*Taille_Classe +
+                 Sexe_Num*boy_proportion +
+                   
+                 (1 + Sexe_Num  | ID_etab_class),
+               data = DATA_AGE_gau_Base_n,  REML = FALSE)
+               
+summary(model1)
+m1 <- coef(summary(model1))
+m1
+write.csv2(m1, file= paste0("~/table/MultiLevel_Model_", ANNEE_COHORTE, "_T1_Math_final.csv"), row.names = F)
+rm(model1, m1)
+
+```
+
+
+
+
+# 2) T2 Math
+
+
+```{r}
+
+model1 <- lmer(T2_Math ~
+
+                 T1_Language +
+                 T1_Math +
+                 Sexe_Num +
+                 Age_CP+ # Age_CP does not work 
+                 
+                 First_sexe_in_T1_Math +
+                 boy_proportion +
+                 Taille_Classe +
+                 IPS_Etab_CP +
+                 heterogeneity_T1_Math +
+                 
+                 Sexe_Num*T1_Language +
+                 Sexe_Num*T1_Math +
+                 Sexe_Num*Age_CP +
+                 Sexe_Num*First_sexe_in_T1_Math +
+                 Sexe_Num*boy_proportion+
+                 Sexe_Num*Taille_Classe +
+                 Sexe_Num*IPS_Etab_CP +
+                 Sexe_Num*heterogeneity_T1_Math +
+                 
+                   
+                 (1 + T1_Math + Sexe_Num  | ID_etab_class), 
+                 data = DATA_AGE_gau_Base_n,  REML = FALSE)
+
+summary(model1)
+m1 <- coef(summary(model1))
+m1
+write.csv2(m1, file= paste0("~/table/MultiLevel_Model_", ANNEE_COHORTE, "_T2_Math_Final.csv"), row.names = F)
+rm(model1, m1)
+
+```
+
+
+# 3) T3 Math Gender gap _ Final model
+
+Age_CP does not work so I replace it with Age_T1 that we transformed into a numerical variable. there will be the need to transform it again in factor for the figures
+ 
+```{r}
+
+DATA_AGE_gau_Base_n$Age_CP <- as.numeric(DATA_AGE_gau_Base_n$Age_CP)
+DATA_AGE_gau_Base_n$Sexe_Boys <- factor(DATA_AGE_gau_Base_n$Sexe_Boys, levels = c('Boys', 'Girls'))
+levels(DATA_AGE_gau_Base_n$Sexe_Boys)
+
+model1 <- lmer(T3_Math ~
+
+                 T1_Language +
+                 T1_Math +
+                 Sexe_Num +
+                 IPS_Etab_CP +
+                 Age_CP + # Age_CP does not work 
+                 heterogeneity_T1_Math +
+                 boy_proportion +
+                 First_sexe_in_T1_Math +
+                 Taille_Classe +
+                 
+                 Sexe_Num*T1_Language +
+                 Sexe_Num*T1_Math +
+                 Sexe_Num*IPS_Etab_CP +
+                 Sexe_Num*Age_CP +
+                 Sexe_Num*heterogeneity_T1_Math +
+                 Sexe_Num*boy_proportion+
+                 Sexe_Num*First_sexe_in_T1_Math +
+                 Sexe_Num*Taille_Classe +
+
+                 (1 + T1_Math + Sexe_Num  | ID_etab_class), 
+                 data = DATA_AGE_gau_Base_n,  REML = FALSE)
+
+summary(model1)
+m1 <- coef(summary(model1))
+
+write.csv2(m1, file= paste0("~/table/MultiLevel_Model_", ANNEE_COHORTE, "_T3_Math_Model8_Final_avec_langageT1.csv"), row.names = F)
+
+hist(DATA_AGE_gau_Base_n$Age_CP)
+
+```
+
+
+
+
+
+
+# Language models
+
+
+
+# 1) T1 Lang
+
+
+```{r}
+
+model1 <- lmer(T1_Language ~
+
+                 Age_CP +
+                 Sexe_Num +
+
+                 First_sexe_in_T1_Language +
+                 IPS_Etab_CP +
+                 Taille_Classe +
+                 boy_proportion +
+                 
+                 Sexe_Num*Age_CP +
+                 Sexe_Num*First_sexe_in_T1_Language +
+                 Sexe_Num*IPS_Etab_CP +
+                 Sexe_Num*Taille_Classe +
+                 Sexe_Num*boy_proportion +
+                   
+                 (1 + Sexe_Num  | ID_etab_class),
+               data = DATA_AGE_gau_Base_n,  REML = FALSE)
+               
+summary(model1)
+m1 <- coef(summary(model1))
+m1
+write.csv2(m1, file= paste0("~/table/MultiLevel_Model_", ANNEE_COHORTE, "_T1_LANG_Final.csv"), row.names = F)
+rm(model1, m1)
+
+```
+
+
+
+
+# 2) T2 Lang
+
+
+```{r}
+
+model1 <- lmer(T2_Language ~
+
+                 Age_CP +
+                 Sexe_Num +
+                 T1_Math +
+                 T1_Language +
+
+                 First_sexe_in_T1_Language +
+                 IPS_Etab_CP +
+                 Taille_Classe +
+                 boy_proportion +
+                 heterogeneity_T1_Lang +
+
+                 Sexe_Num*Age_CP +
+                 Sexe_Num*T1_Math +
+                 Sexe_Num*T1_Language +
+                 Sexe_Num*First_sexe_in_T1_Language +
+                 Sexe_Num*IPS_Etab_CP +
+                 Sexe_Num*Taille_Classe +
+                 Sexe_Num*boy_proportion+
+                 Sexe_Num*heterogeneity_T1_Lang +
+                 
+
+                   
+                 (1 + T1_Language + Sexe_Num  | ID_etab_class), 
+                 data = DATA_AGE_gau_Base_n,  REML = FALSE)
+
+summary(model1)
+m1 <- coef(summary(model1))
+m1
+write.csv2(m1, file= paste0("~/table/MultiLevel_Model_", ANNEE_COHORTE, "_T2_LANG_Final.csv"), row.names = F)
+rm(model1, m1)
+
+```
+
+
+# 3) T3 Lang Gender gap _ Final model
+
+
+```{r}
+
+model1 <- lmer(T3_Language ~
+
+                 Age_CP +
+                 Sexe_Num +
+                 T1_Math +
+                 T1_Language +
+
+                 First_sexe_in_T1_Language +
+                 IPS_Etab_CP +
+                 Taille_Classe +
+                 boy_proportion +
+                 heterogeneity_T1_Lang +
+                 
+                 Sexe_Num*Age_CP +
+                 Sexe_Num*T1_Math +
+                 Sexe_Num*T1_Language +
+                 Sexe_Num*First_sexe_in_T1_Language +
+                 Sexe_Num*IPS_Etab_CP +
+                 Sexe_Num*Taille_Classe +
+                 Sexe_Num*boy_proportion+
+                 Sexe_Num*heterogeneity_T1_Lang +
+
+                 (1 + T1_Language + Sexe_Num  | ID_etab_class), 
+                 data = DATA_AGE_gau_Base_n,  REML = FALSE)
+
+summary(model1)
+m1 <- coef(summary(model1))
+
+write.csv2(m1, file= paste0("~/table/MultiLevel_Model_", ANNEE_COHORTE, "_T3_LANG_Model9_Final.csv"), row.names = F)
+
+
+
+```
+

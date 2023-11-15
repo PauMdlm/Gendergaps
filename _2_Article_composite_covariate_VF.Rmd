@@ -1,0 +1,746 @@
+---
+title: "Data Management of DEPP cohort Evalaide - Composite covariate creation"
+author:
+  - Pauline Martinot [UNICOG, NeuroSpin]
+  - Bénédicte Colnet [Inria, Paris-Saclay]
+date: "July 2023"
+output:
+  pdf_document:
+    toc: yes
+  html_document:
+    number_sections: no
+    toc: yes
+    toc_depth: 2
+abstract: | 
+  This notebook concerns data from National assessment in 1st and 2nd grade in France : Composite covariate creation. This notebook comes after the preprocessing notebook, and create all the composite covariates, along with normalization of grades, and creation of the rank covariates. The input can be either an imputed data set, or a data set filtered from the missing values as detailed in preprocess.
+---
+
+
+
+
+```{r}
+
+knitr::opts_chunk$set(warning = FALSE, echo = TRUE)
+
+# Parameters to set before launch of the pipeline
+
+IMPUTED = "non-imputed" # "non-imputed"- allows to launch the same pipeline but for each data sources
+NAOMIT = "True" # "True" 
+
+## Warning if "Non-imputed" for sensitivity analysis = make sure to add na.rm = TRUE when applying mean to T1, T2, T3 language and math # Creating composed variable
+
+ANNEE_COHORTE = 2018 #2019 #2020 #2021
+
+# Library
+
+library(dplyr) # case_when function, and others
+library(ggplot2)
+library(reshape2) # melt()
+
+```
+
+```{r}
+
+# Data
+
+if (ANNEE_COHORTE == 2018){
+load(paste0("~/Data/cohort_", ANNEE_COHORTE, "_after_1_preprocess.RData"))
+}
+if (ANNEE_COHORTE == 2019){
+load(paste0("~/Data/cohort_", ANNEE_COHORTE, "_after_1_preprocess.RData"))
+}
+if (ANNEE_COHORTE == 2020){
+load(paste0("~/Data/cohort_", ANNEE_COHORTE, "_after_1_preprocess.RData"))
+}
+if (ANNEE_COHORTE == 2021){
+load(paste0("~/Data/cohort_", ANNEE_COHORTE, "_after_1_preprocess_V2NA.RData"))
+}
+
+
+SEUIL_INF_CLASS = 5
+
+```
+
+
+
+```{r}
+
+if(IMPUTED == "non-imputed"){
+  if(NAOMIT == "True"){
+  rm(data_depp_imputed)
+  data_depp <- na.omit(data_depp)
+  } else if (NAOMIT == "False"){
+  rm(data_depp_imputed)
+    }
+}
+
+if(IMPUTED == "imputed"){
+  data_depp <- data_depp_imputed
+  rm(data_depp_imputed)
+} 
+
+```
+
+# Correct IPS when taking the imputed data
+
+When imputing, the imputation process imputed with several values of IPS per class. We corrected this by taking the IPS average.
+
+```{r}
+
+if(IMPUTED == "imputed"){
+  IPS_summarized <- data_depp[, c("ID_etab_class", "IPS_Etab_CP")] %>% 
+    group_by(ID_etab_class) %>%
+     summarise_at(vars(IPS_Etab_CP), list(IPS_Etab_CP = mean, sd = sd)) 
+  
+  data_depp <- subset(data_depp, select = -IPS_Etab_CP)
+  
+  data_depp <- merge(data_depp, IPS_summarized, by = "ID_etab_class")
+  
+  rm(IPS_summarized)
+}
+
+```
+
+# Create subcategories among school category
+
+First compute the median to prepare subcategories.
+
+```{r}
+
+# Compute medians of each category
+median_prive_1 <- median(data_depp$IPS_Etab_CP[which(data_depp$Categ_Etab_CP == "Private")]) 
+median_public_1 <- median(data_depp$IPS_Etab_CP[which(data_depp$Categ_Etab_CP == "Public")]) 
+median_rep_1 <- median(data_depp$IPS_Etab_CP[which(data_depp$Categ_Etab_CP == "REP")])
+median_repplus_1 <- median(data_depp$IPS_Etab_CP[which(data_depp$Categ_Etab_CP == "REP+")]) 
+
+# divide Public sector in 4 pieces (because this category is more diversed)
+quartiles_public_1 <- quantile(data_depp[data_depp$Categ_Etab_CP == "Public", "IPS_Etab_CP"], prob = seq(0, 1, length = 5), na.rm = TRUE)
+
+```
+
+Then, create a subcategory variable.
+
+```{r}
+
+data_depp$Sous_Categorie <- case_when(data_depp$Categ_Etab_CP == "Private" & data_depp$IPS_Etab_CP < median_prive_1 ~ "inf",
+                                      data_depp$Categ_Etab_CP == "Private" & data_depp$IPS_Etab_CP >= median_prive_1 ~ "sup",
+                                      data_depp$Categ_Etab_CP == "REP" & data_depp$IPS_Etab_CP < median_rep_1 ~ "inf",
+                                      data_depp$Categ_Etab_CP == "REP" & data_depp$IPS_Etab_CP >= median_rep_1 ~ "sup",
+                                      data_depp$Categ_Etab_CP == "REP+" & data_depp$IPS_Etab_CP < median_repplus_1 ~ "inf",
+                                      data_depp$Categ_Etab_CP == "REP+" & data_depp$IPS_Etab_CP >= median_repplus_1 ~ "sup",
+                                      data_depp$Categ_Etab_CP == "Public" & data_depp$IPS_Etab_CP < quartiles_public_1[[2]] ~ "inf-",
+                                      data_depp$Categ_Etab_CP == "Public" & data_depp$IPS_Etab_CP >= quartiles_public_1[[2]] & data_depp$IPS_Etab_CP < quartiles_public_1[[3]]~ "inf",
+                                      data_depp$Categ_Etab_CP == "Public" & data_depp$IPS_Etab_CP >= quartiles_public_1[[3]] & data_depp$IPS_Etab_CP < quartiles_public_1[[4]]~ "sup",
+                                      data_depp$Categ_Etab_CP == "Public" & data_depp$IPS_Etab_CP >= quartiles_public_1[[4]] ~ "sup+",)
+
+```
+
+Create a related subcategory variable
+
+```{r}
+
+data_depp$Categ_10c_CP <- case_when(data_depp$Categ_Etab_CP == "Private" & data_depp$IPS_Etab_CP < median_prive_1 ~ "Priv inf",
+                                    data_depp$Categ_Etab_CP == "Private" & data_depp$IPS_Etab_CP >= median_prive_1 ~ "Priv sup",
+                                    data_depp$Categ_Etab_CP == "REP" & data_depp$IPS_Etab_CP < median_rep_1 ~ "REP inf",
+                                    data_depp$Categ_Etab_CP == "REP" & data_depp$IPS_Etab_CP >= median_rep_1 ~ "REP sup",
+                                    data_depp$Categ_Etab_CP == "REP+" & data_depp$IPS_Etab_CP < median_repplus_1 ~ "REP+ inf",
+                                    data_depp$Categ_Etab_CP == "REP+" & data_depp$IPS_Etab_CP >= median_repplus_1 ~ "REP+ sup",
+                                    data_depp$Categ_Etab_CP == "Public" & data_depp$IPS_Etab_CP < quartiles_public_1[[2]] ~ "Pub inf-",
+                                    data_depp$Categ_Etab_CP == "Public" & data_depp$IPS_Etab_CP >= quartiles_public_1[[2]] &
+                                      data_depp$IPS_Etab_CP < quartiles_public_1[[3]]~ "Pub inf",
+                                    data_depp$Categ_Etab_CP == "Public" & data_depp$IPS_Etab_CP >= quartiles_public_1[[3]] &
+                                      data_depp$IPS_Etab_CP < quartiles_public_1[[4]]~ "Pub sup",
+                                    data_depp$Categ_Etab_CP == "Public" & data_depp$IPS_Etab_CP >= quartiles_public_1[[4]] ~ "Pub sup+")
+# Reorder columns 
+data_depp$Categ_10c_CP <- factor(data_depp$Categ_10c_CP, 
+                                 levels = c("Priv sup", "Priv inf",
+                                            "Pub sup+", "Pub sup", "Pub inf", "Pub inf-",
+                                            "REP sup", "REP inf", 
+                                            "REP+ sup", "REP+ inf"))
+
+dim(data_depp)
+
+```
+
+
+# Normalize grades : Create notes in % of success of the test to normalize the data, new variables in Percent of success per test _P
+
+Reminder of which variables are contained in each list - only the existing variables in every cohort were kept, so that the composite variables were comparable from one year to the other : 44 tests
+
+Lang_T1 <- c("T1_Comp_Mots",
+             "T1_Comp_Phra",
+             "T1_Comp_Text",
+             "T1_Manip_Phon",
+             "T1_Manip_Syll",
+             "T1_Conn_Lettres",
+             "T1_Recon_Ecritu_L",
+             "T1_Compa_Lettres")
+
+Math_T1 <- c("T1_Ecri_Nombre",
+             "T1_Lire_Nombre",
+             "T1_Resoud_Pb",
+             "T1_Denombrer",
+             "T1_Compa_Nombre",
+             "T1_Ligne_Num")
+
+Lang_T2 <- c("T2_Comp_Phra",
+             "T2_Lire_Mots",
+             "T2_Lire_Text",
+             "T2_Ecri_Syll",
+             "T2_Ecri_Mots",
+             "T2_Manip_Phon",
+             "T2_Conn_Lettres")
+             
+Math_T2 <- c("T2_Compa_Nombre",
+             "T2_Ligne_Num",
+             "T2_Addition",
+             "T2_Soustract",
+             "T2_Ecri_Nombre",
+             "T2_Resoud_Pb")
+             
+Lang_T3 <- c("T3_Comp_Mots",
+             "T3_Comp_Phra",
+             "T3_Ecri_Syll",
+             "T3_Ecri_Mots",
+             "T3_Comp_Phra_Lu",
+             "T3_Comp_Text_Lu",
+             "T3_Lire_Mots",
+             "T3_Lire_Text")
+
+Math_T3 <- c("T3_Assemblage",
+             "T3_Ligne_Num",
+             "T3_Addition",
+             "T3_Soustract",
+             "T3_Calcul_Mental",
+             "T3_Ecri_Nombre",
+             "T3_Lire_Nombre",
+             "T3_Repres_Nb",
+             "T3_Resoud_Pb")
+             
+Attention : in 2021, T3_Repres_Nb is missing.
+
+same_notes : 37 identical items
+
+"T1_Comp_Mots"      "T1_Comp_Phra"      "T1_Manip_Phon"     "T1_Manip_Syll"     "T1_Conn_Lettres"   "T1_Recon_Ecritu_L"
+"T1_Ecri_Nombre"    "T1_Lire_Nombre"    "T1_Resoud_Pb"      "T1_Denombrer"      "T1_Ligne_Num"      "T2_Comp_Phra"     
+"T2_Lire_Mots"      "T2_Lire_Text"      "T2_Ecri_Syll"      "T2_Ecri_Mots"      "T2_Manip_Phon"     "T2_Conn_Lettres"  
+"T2_Compa_Nombre"   "T2_Ligne_Num"      "T2_Ecri_Nombre"    "T2_Resoud_Pb"      "T3_Comp_Mots"      "T3_Comp_Phra"     
+"T3_Ecri_Syll"      "T3_Ecri_Mots"      "T3_Comp_Phra_Lu"   "T3_Comp_Text_Lu"   "T3_Lire_Mots"      "T3_Lire_Text"     
+"T3_Assemblage"     "T3_Ligne_Num"      "T3_Calcul_Mental"  "T3_Ecri_Nombre"    "T3_Lire_Nombre"    "T3_Repres_Nb"     
+"T3_Resoud_Pb"   
+
+```{r}
+
+if (ANNEE_COHORTE == 2018){
+same_notes_P    <- paste(same_notes, "_P", sep="") # 37 notes
+notes_P         <- paste(notes, "_P", sep="")    # 44 notes
+Lang_T1_P       <- paste(Lang_T1, "_P", sep="")
+Lang_T2_P       <- paste(Lang_T2, "_P", sep="")
+Lang_T3_P       <- paste(Lang_T3, "_P", sep="")
+Math_T1_P       <- paste(Math_T1, "_P", sep="")
+Math_T2_P       <- paste(Math_T2, "_P", sep="")
+Math_T3_P       <- paste(Math_T3, "_P", sep="")
+
+# Creating variables _P as the percentage of success per variable ranging from 0 to 100.
+
+ for (i in c(same_notes, notes)){
+    
+    data_depp[[paste0(i, "_P")]] <- (data_depp[[i]] - min(data_depp[, i], na.rm = TRUE)) / (max(data_depp[, i], na.rm = TRUE) - min(data_depp[, i], na.rm = TRUE))*100
+    
+ }
+dim(data_depp)
+}
+if (ANNEE_COHORTE == 2019){
+same_notes_P    <- paste(same_notes, "_P", sep="") # 37 notes
+notes_P         <- paste(notes, "_P", sep="")    # 44 notes
+Lang_T1_P       <- paste(Lang_T1, "_P", sep="")
+Lang_T2_P       <- paste(Lang_T2, "_P", sep="")
+Lang_T3_P       <- paste(Lang_T3, "_P", sep="")
+Math_T1_P       <- paste(Math_T1, "_P", sep="")
+Math_T2_P       <- paste(Math_T2, "_P", sep="")
+Math_T3_P       <- paste(Math_T3, "_P", sep="")
+
+# Creating variables _P as the percentage of success per variable ranging from 0 to 100.
+
+ for (i in c(same_notes, notes)){
+    
+    data_depp[[paste0(i, "_P")]] <- (data_depp[[i]] - min(data_depp[, i], na.rm = TRUE)) / (max(data_depp[, i], na.rm = TRUE) - min(data_depp[, i], na.rm = TRUE))*100
+    
+ }
+dim(data_depp)
+}
+if (ANNEE_COHORTE == 2020){
+same_notes_P    <- paste(same_notes, "_P", sep="") # 37 notes
+notes_P         <- paste(notes, "_P", sep="")    # 44 notes
+Lang_T1_P       <- paste(Lang_T1, "_P", sep="")
+Lang_T2_P       <- paste(Lang_T2, "_P", sep="")
+Lang_T3_P       <- paste(Lang_T3, "_P", sep="")
+Math_T1_P       <- paste(Math_T1, "_P", sep="")
+Math_T2_P       <- paste(Math_T2, "_P", sep="")
+Math_T3_P       <- paste(Math_T3, "_P", sep="")
+
+# Creating variables _P as the percentage of success per variable ranging from 0 to 100.
+
+ for (i in c(same_notes, notes)){
+    
+    data_depp[[paste0(i, "_P")]] <- (data_depp[[i]] - min(data_depp[, i], na.rm = TRUE)) / (max(data_depp[, i], na.rm = TRUE) - min(data_depp[, i], na.rm = TRUE))*100
+    
+ }
+dim(data_depp)
+}
+if (ANNEE_COHORTE == 2021){
+# same_notes_P    <- paste(same_notes, "_P", sep="") # 37 notes
+# notes_P         <- paste(notes, "_P", sep="")    # 44 notes
+Lang_T1_P       <- paste(Lang_T1, "_P", sep="")
+Lang_T2_P       <- paste(Lang_T2, "_P", sep="")
+Lang_T3_P       <- paste(Lang_T3, "_P", sep="")
+Math_T1_P       <- paste(Math_T1, "_P", sep="")
+Math_T2_P       <- paste(Math_T2, "_P", sep="")
+Math_T3 <- c("T3_Assemblage",
+             "T3_Ligne_Num",
+             "T3_Addition",
+             "T3_Soustract",
+             "T3_Calcul_Mental",
+             "T3_Ecri_Nombre",
+             "T3_Lire_Nombre",
+             "T3_Resoud_Pb")
+Math_T3_P       <- paste(Math_T3, "_P", sep="")
+
+
+# Creating variables _P as the percentage of success per variable ranging from 0 to 100.
+
+ for (i in c(Lang_T1, Lang_T2, Lang_T3, Math_T1, Math_T2, Math_T3)){
+    
+    data_depp[[paste0(i, "_P")]] <- (data_depp[[i]] - min(data_depp[, i], na.rm = TRUE)) / (max(data_depp[, i], na.rm = TRUE) - min(data_depp[, i], na.rm = TRUE))*100
+    
+ }
+dim(data_depp)
+}
+
+```
+
+# Creating Composed variable made from variables in _P
+
+Creation of new ultra-composed variables regarding language and maths at T1, T2, T3. 
+We decided to gather all the raw data (in percent of success) as the mean of the exercise (language or maths), as follow: 
+
+NB : no need to add "na.rm =  TRUE" as NA = 0 due to imputation
+
+data_depp$T1_Language_bis <- apply(data_depp[ , c(Lang_T1_P)], 1, mean, na.rm = TRUE)
+
+```{r}
+  
+  # Language at T1 without  T1_Reco_lettre_ecri so that it is comparable between 2018 and 2019
+
+data_depp$T1_Language <- apply(data_depp[ , c(Lang_T1_P)], 1, mean, na.rm = TRUE)
+
+  # Language at T2 without  T2_var so that it is comparable between 2018 and 2019
+
+data_depp$T2_Language <- apply(data_depp[ , c(Lang_T2_P)], 1, mean, na.rm = TRUE)
+
+data_depp$T3_Language <- apply(data_depp[ , c(Lang_T3_P)], 1, mean, na.rm = TRUE)
+
+data_depp$T1_Math <- apply(data_depp[ , c(Math_T1_P)], 1, mean, na.rm = TRUE)
+
+data_depp$T2_Math <- apply(data_depp[ , c(Math_T2_P)], 1, mean, na.rm = TRUE)
+  
+  # With data_depp_1$T3_Resoud_Pb_P for Regressions and Description
+
+data_depp$T3_Math <- apply(data_depp[ , c(Math_T3_P)], 1, mean, na.rm = TRUE)
+
+dim(data_depp)
+
+```
+
+
+# Illustration of what we did: keep the same distribution but scale everything in between 0 and 100.
+
+```{r}
+
+ggplot(data = data_depp, aes(x = T1_Denombrer)) +
+  geom_histogram(bins = 30, alpha = 0.5) +
+  theme_bw()
+ggplot(data = data_depp, aes(x = T1_Denombrer_P)) +
+  geom_histogram(bins = 30, alpha = 0.5) +
+  theme_bw()
+
+```
+
+
+```{r}
+
+if(ANNEE_COHORTE == 2018){
+  
+  summary(data_depp[, c(notes_P)])
+  
+} else if (ANNEE_COHORTE == 2019){
+  
+  summary(data_depp[, c(notes_P)])
+  
+} else if (ANNEE_COHORTE == 2020){
+  
+  summary(data_depp[, c(notes_P)])
+  
+} else if (ANNEE_COHORTE == 2021){
+  
+  summary(data_depp[, c(notes_P)])
+}
+
+
+```
+
+Sanity check: correlation coefficients should be the same everywhere.
+
+```{r}
+
+round(cor(data_depp[, notes_P])) == round(cor(data_depp[, notes])) 
+  
+```
+
+
+Another sanity check: the coefficients of a linear model have to be the same:
+
+```{r}
+  
+test <- as.data.frame(scale(data_depp[, notes]))
+test_P <- as.data.frame(scale(data_depp[, notes_P]))
+lm <- lm(T3_Comp_Phra ~ ., data = test)
+lm_P <- lm(T3_Comp_Phra_P ~ ., data = test_P)
+round(as.vector(lm$coefficients),10) == round(as.vector(lm_P$coefficients),10)
+rm(test)
+rm(test_P)
+rm(lm)
+rm(lm_P)
+
+```
+
+
+# Rank : Percentiles of levels for ranking for figure 2C and measures of Progress
+
+Creation of a national ranking on the general population.
+
+For each student, we kept the "average rank".
+
+The more there are students belonging to the same rank, the more their average rank is lowering down.
+ 
+Reading the ranks 
+- E.g., a child with 96% in math at T1, will have a rank close to 1 (0.999), whereas a child with 20% in math at T1 will have a lower rank (0.0015)
+
+Reading the deciles in ranks
+Example : 1 is the worst, and 10 the best rank
+
+Deciles in Ranks
+- Therefore, when we apply deciles to average ranks, it lowers down the ranks artificially.
+- E.g. : For a rank of 0.21, the lower floor is #2 and we add +1 for putting it in the right decile (above decile) of #3.
+- E.g. : For a rank of 0.1, the decile will be the above decile.
+
+We decided to use the rank() function instead of percent_rank()
+
+Rank() functions as follow : 
+- na.last = "keep", ties.method = "average"
+= (rank of row in its partition - 1) / (numbers of rows in the partition - 1)
+- na.last = "keep" : all NA are not ranked and keep their "value of NA".
+- ties.method = "average" : gives a mean rank with elements have the same value (ex: the value 1 appears 2 times, for 2 people at the rank 1 and 2, therefore their rank will be of 1.5.
+
+percent_rank which is built as follow :
+(rank of row in its partition - 1) / (numbers of rows in the partition - 1)
+
+Note that because it averages position when students have the same rank, then it leads to several students having the same percentile position, for example here we take the children that have the same rank at T1 in Language, and therefore the same average grade, but for example they had different grades on each separate exam.
+
+
+```{r}
+# Creating 3 composite variables in Rank 
+
+n1 <- nrow(data_depp)
+
+data_depp$T1_Lang_Rank          <- (rank(data_depp$T1_Language, na.last = "keep", ties.method = "average") - 1) / (n1 - 1)
+data_depp$T2_Lang_Rank          <- (rank(data_depp$T2_Language, na.last = "keep", ties.method = "average") - 1) / (n1 - 1)
+data_depp$T3_Lang_Rank          <- (rank(data_depp$T3_Language, na.last = "keep", ties.method = "average") - 1) / (n1 - 1)
+
+data_depp$T1_Math_Rank          <- (rank(data_depp$T1_Math, na.last = "keep", ties.method = "average") - 1) / (n1 - 1)
+data_depp$T2_Math_Rank          <- (rank(data_depp$T2_Math, na.last = "keep", ties.method = "average") - 1) / (n1 - 1)
+data_depp$T3_Math_Rank          <- (rank(data_depp$T3_Math, na.last = "keep", ties.method = "average") - 1) / (n1 - 1)
+
+DATA_Check <- data_depp[c(1:100) , c("ID_Eleve", "T1_Math", "T1_Math_Rank")]
+rm(DATA_Check)
+
+```
+
+# Creating all variables per rank 
+
+
+```{r}
+
+# Creating New lists
+
+notes_Rank     <- paste(notes_P, "_Rank", sep="")
+Lang_T1_Rank   <- paste(Lang_T1_P, "_Rank", sep="")
+Lang_T2_Rank   <- paste(Lang_T2_P, "_Rank", sep="")
+Lang_T3_Rank   <- paste(Lang_T3_P, "_Rank", sep="")
+Math_T1_Rank   <- paste(Math_T1_P, "_Rank", sep="")
+Math_T2_Rank   <- paste(Math_T2_P, "_Rank", sep="")
+Math_T3_Rank   <- paste(Math_T3_P, "_Rank", sep="")
+
+# Creating new variables from _P to _Ranks
+
+notes_P <- c(Lang_T1_P, Lang_T2_P, Lang_T3_P, Math_T1_P, Math_T2_P, Math_T3_P)
+
+for (i in c(notes_P)) {
+  
+  data_depp[[paste0(i, "_Rank")]] <- as.numeric((rank(data_depp[[i]], na.last = "keep", ties.method = "average") - 1) / (n1 - 1))
+  
+}
+rm(i)
+  
+
+# New lists
+
+notes_P_Rank <- c(Lang_T1_Rank, Lang_T2_Rank, Lang_T3_Rank, Math_T1_Rank, Math_T2_Rank, Math_T3_Rank )
+
+```
+
+
+
+```{r}
+
+data_depp[data_depp$T1_Lang_Rank == data_depp$T1_Lang_Rank[[1]], c("T1_Lang_Rank", "T1_Language", Lang_T1_P)][1:10,]
+
+nrow(data_depp[data_depp$T1_Lang_Rank == data_depp$T1_Lang_Rank[[1]], c("T1_Lang_Rank", "T1_Language", Lang_T1_P)])
+
+```
+
+
+We can have a look to the best children in Language at T1 for example, where we observed that they had the maximum grades everywhere!
+
+```{r}
+
+data_depp[data_depp$T1_Lang_Rank == max(data_depp$T1_Lang_Rank), c("T1_Lang_Rank", "T1_Language", Lang_T1_P)][1:500,]
+
+```
+
+
+We can also investigate the math at period T2 for example:
+
+```{r}
+
+data_depp[data_depp$T2_Math_Rank == max(data_depp$T2_Math_Rank), c("T2_Math_Rank", "T2_Math", Math_T2_P)][1:10,]
+
+```
+
+
+Note that the interest of rank is to look at the primary outcome with an almost uniform function. Then only the position matters, and not the score in itself. A plot allows to visualize such phenomenon.
+
+```{r}
+
+data_depp %>% 
+  melt(measure.vars = c("T1_Lang_Rank", "T2_Lang_Rank", "T3_Lang_Rank", 
+                        "T1_Math_Rank", "T2_Math_Rank", "T3_Math_Rank")) %>%
+  ggplot(aes(x = value))  + 
+  geom_histogram(binwidth = 0.025, alpha = 0.6, color = "blue", fill = "pink") + # all 2.5 percentiles 
+  facet_wrap(facets = variable ~ .) +
+  theme_bw()
+
+dim(data_depp)
+
+```
+
+
+Why do we observe that Math at T2 is such a noisy set? The explanation comes from the test in itself, as they are highly discretized. Indeed, in Math T2, 4 tests over 6 are discretized between 0, 1, ..., 10, and one is from 0, 0.5, ..., 9.5, 10. While in Language T2, only 3 tests over 7 are discretized.
+
+We can quantify it, counting the number of different grades on each tests for Math at T2, that is:
+
+```{r}
+
+number_of_combinations_math_T2 = 0
+for (i in Math_T2_P){
+  number_of_combinations_math_T2 = number_of_combinations_math_T2 + length(unique(data_depp[, i]))
+}
+print("Number of combinaisons in Math T2: ")
+print(number_of_combinations_math_T2)
+number_of_combinations_lang_T2 = 0
+for (i in Lang_T2_P){
+  number_of_combinations_lang_T2 = number_of_combinations_lang_T2 + length(unique(data_depp[, i]))
+}
+print("Number of combinaisons in Lang T2: ")
+print(number_of_combinations_lang_T2)
+
+```
+
+But normally, other rank in period also appears "noisy" and "non-uniform" when the bins are small enough. Let's investigate:
+
+```{r}
+data_depp %>% 
+  melt(measure.vars = c("T1_Lang_Rank")) %>%
+  ggplot(aes(x = value))  + 
+  geom_histogram(binwidth = 0.02, alpha = 0.6, color = "blue", fill = "pink") + 
+  facet_wrap(facets = variable ~ .) +
+  theme_bw() 
+
+data_depp %>% 
+  melt(measure.vars = c("T1_Lang_Rank")) %>%
+  ggplot(aes(x = value))  + 
+  geom_histogram(binwidth = 0.001, alpha = 0.6, color = "blue", fill = "pink") + 
+  facet_wrap(facets = variable ~ .) +
+  theme_bw()
+```
+
+
+```{r}
+dim(data_depp)
+```
+
+
+# New variables as possible outcomes: progression
+
+Progression on each period in national ranking.
+```{r}
+  
+# Language
+# Y = rank in T3 - Rank in T1
+data_depp$T3_T1_Language_Rk <- data_depp$T3_Lang_Rank - data_depp$T1_Lang_Rank
+
+# Y = rank in T2 - Rank in T1
+data_depp$T2_T1_Language_Rk <- data_depp$T2_Lang_Rank - data_depp$T1_Lang_Rank
+
+
+
+```
+
+Sanity check that the progression is never above 1.
+
+```{r}
+
+
+ggplot(data_depp, aes(x = T3_T1_Language_Rk)) +
+  geom_histogram() +
+  theme_classic()
+ggplot(data_depp, aes(x = T2_T1_Language_Rk)) +
+  geom_histogram() +
+  theme_classic()
+
+
+```
+
+
+```{r}
+# Math
+  
+# Y = rank in T3 - Rank in T1
+data_depp$T3_T1_Maths_Rk <- data_depp$T3_Math_Rank - data_depp$T1_Math_Rank
+# Y = rank in T2 - Rank in T1
+data_depp$T2_T1_Maths_Rk <- data_depp$T2_Math_Rank - data_depp$T1_Math_Rank
+
+
+```
+
+Sanity check that the progression is never above 1.
+
+```{r}
+  
+ggplot(data_depp, aes(x = T3_T1_Maths_Rk)) +
+  geom_histogram() +
+  theme_classic()
+ggplot(data_depp, aes(x = T2_T1_Maths_Rk)) +
+  geom_histogram() +
+  theme_classic()
+
+
+```
+
+```{r}
+dim(data_depp)
+```
+
+
+# [Variable Per Classes] Flag first child per class in mathematics and language at T1, T2, and T3
+
+```{r}
+
+synthetic_grades <- c("T1_Math", "T2_Math", "T3_Math",
+                      "T1_Language", "T2_Language", "T3_Language")
+
+for (grade in synthetic_grades){
+  
+  # create table with first grade, first children per class
+  temp <- data_depp[, c("ID_etab_class", grade, "ID_Eleve")] %>%
+    mutate_at(all_of(grade), funs(round(., 0))) %>%
+    group_by(ID_etab_class) %>%
+    top_n(1, !!as.name(grade))
+  
+  # store first children
+  are_first_children <- temp$ID_Eleve
+  
+  # create column
+  data_depp[, paste0("first_in_", grade)] <- ifelse(data_depp$ID_Eleve %in% are_first_children, TRUE, FALSE)
+}
+
+rm(temp)
+rm(are_first_children)
+
+
+```
+
+The higher the rank, the higher the grade.
+
+```{r}
+
+synthetic_grades <- c("T1_Math_Rank", "T2_Math_Rank", "T3_Math_Rank",
+                      "T1_Lang_Rank", "T2_Lang_Rank", "T3_Lang_Rank")
+
+for (grade in synthetic_grades){
+  
+  # create table with first grade, first children per class
+  temp <- data_depp[, c("ID_etab_class", grade, "ID_Eleve")] %>%
+    group_by(ID_etab_class) %>%
+    top_n(1, !!as.name(grade))
+  
+  # store first children
+  are_first_children <- temp$ID_Eleve  # we keep only first of class
+  
+  # create column
+  data_depp[, paste0("first_in_", grade)] <- ifelse(data_depp$ID_Eleve %in% are_first_children, TRUE, FALSE)
+}
+
+
+rm(temp)
+rm(are_first_children)
+
+
+```
+
+# Creation of list of variables
+
+```{r}
+caracteristiques_eleve <- c("Age_CP","Sexe",
+                            "Categ_Etab_CP",
+                            "IPS_Etab_CP") 
+
+ids <- c("ID_Eleve","ID_Etab_CP", "ID_etab_class") 
+```
+
+# Cleaning
+
+```{r}
+
+rm(Add_Lang_T1_2018, Add_Lang_T1_2018_P, Add_Lang_T2_2018, Add_Lang_T2_2018_P, Add_Lang_T2_2019, Add_Math_T1_2019, Add_notes_2018, Add_notes_2018_P, Add_notes_2019, AGE_MAX, AGE_MIN, AGE_NORM_BAS, AGE_NORM_SUP, AGE_NORMAL_MOY, all_classes_ids, Base, caracteristiques_eleve, classes_without_Sexe, Fluency_With_Cut, Fluency_With_Cut_P, Fluency_With_Cut_Rank, Fluency_Wout_Cut, Fluency_Wout_Cut_P, Fluency_Wout_Cut_Rank,  Lang_T1_Rank, Lang_T1T2T3_Rank,  Lang_T2_Rank, Lang_T1T2T3,  Lang_T3_Rank, level,  Math_T1_Rank, Math_T1T2T3, Math_T1T2T3_Rank,  Math_T2_Rank, Math_T3_Rank, grade, i , ids, median_prive_1, median_public_1, median_rep_1, median_repplus_1, n1,  notes_Rank, number_of_combinations_lang_T2, number_of_combinations_math_T2, number_of_missing_values, number_of_observations_with_NA, PATH_IMAGE, percentage_of_missing_values, quartiles_public_1, same_notes, SEUIL_TAILLE, synthetic_grades, TEST, total_number_of_items, legend_title, Lang_T1, Lang_T2, Lang_T3, Math_T2_Rank, Math_T2, Math_T2_P)
+
+```
+
+# Save output
+
+```{r}
+# save the whole image
+
+if(IMPUTED == "non-imputed"){
+  if(NAOMIT == "True"){
+save.image(file = paste0("~/Data/cohort_", ANNEE_COHORTE, "_", IMPUTED, "_after_2_composite_covariate_naomit_True.RData"))
+  } else if (NAOMIT == "False"){
+save.image(file = paste0("~/Data/cohort_", ANNEE_COHORTE, "_", IMPUTED, "_after_2_composite_covariate_naomit_False.RData"))
+    }
+}
+
+if(IMPUTED == "imputed"){
+save.image(file = paste0("~/Data/cohort_", ANNEE_COHORTE, "_", IMPUTED, "_after_2_composite_covariate.RData"))
+} 
+```
+

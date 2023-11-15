@@ -1,0 +1,450 @@
+---
+title: "8_Data_Models_reg"
+author: Pauline Martinot [UNICOG, NeuroSpin]
+date: "09/01/2022"
+output:
+  pdf_document:
+    toc: yes
+    toc_depth: 3
+  html_document:
+    toc: yes
+    toc_depth: '3'
+    df_print: paged
+---
+
+
+Note 11/10/2023 : I added 4 math tests at T1 in the Gaussianization process for the matching figures and experiments. Due to the happening of NANs I could not explained, I decided to impute the fewer NANs with Mice.
+Therefore giving the new Gau_joined_Mice.RData
+
+However, all models and figures have been undergoing Gaussianization process without the burden of the additional math assessments at T1, and therefore did not need any imputation process. 
+
+### Parameters
+
+```{r setup, include=FALSE}
+
+knitr::opts_chunk$set(echo = TRUE)
+
+# Parameters to set before launch of the pipeline
+
+ANNEE_COHORTE = "2018" # 2019 # 2020
+IMPUTED =  "imputed"# "non-imputed" 
+
+# Library
+library(ggplot2)
+library(FactoMineR)
+library(dplyr)
+library(tidyverse)
+library(broom)
+library(jtools)
+library(LambertW)
+library(reshape2)
+
+```
+
+# Data = joined
+
+Step 1 : Selecting children in classes containing 6 to 27 children per class and, selecting children of normal age when starting first grade = Removing classes with an extreme size (n < 5 or n > 28 children per class)  
+
+Step 2 : As variables are made per class, computing the following class-level variables: boys’ proportion per class, gender of first of class
+
+End of script // 3 //
+
+Step 3 : Gaussianizing individual variables (a mean of 0 and a standard deviation of 1) 
+
+Step 4 : Computing following class-level variables = heterogeneity both in math and in language at T1
+
+Step 5 : Select age min 64 and age Max 86 // Fig 1 // 
+
+Step 6 : Select children of normal age : Removing children outside the normal age range (< 69- or > 80 month-old)  // Fig 2 & 3 & Matching // 
+
+Step 7 : if needed, removing classes with less than 30% of boys and 30% of girls // Fig 3 and model //
+
+
+```{r}
+load(file = paste0("~/Desktop/education/ ARTICLE_Final_script/data/cohort_", ANNEE_COHORTE,"_imputed_joined.RData"))
+
+```
+
+
+### + sanity check 
+
+```{r echo=TRUE}
+
+summary(joined$Taille_Classe)    # min 6 and max 27
+summary(joined$n_girls)          # min 0 max 22-24
+summary(joined$n_boy)            # min 0 max 22-24
+summary(joined$boy_proportion)   # 0 to 1
+
+```
+
+
+### + Rename Sexe as Sexe_Boys for facilitating comprehension when reading results
+
+```{r}
+
+# Sexe_Num (-0.5 ; +0.5) vs. Sexe (Boys ;Girls) => Sexe_Boys (Boys, Girls)
+
+names(joined)[names(joined) == "Sexe"] <- "Sexe_Boys" 
+joined$Sexe_Boys <- as.factor(joined$Sexe_Boys)
+summary(joined$Sexe_Boys)
+
+# in 2018 we end up with Sexe_Num as numeric (-0.5 to 0.5) and Sexe_Boys as factor (Boys or Girls)
+```
+
+### + Add Age
+
+We keep "Age_CP" in Gaussianized data for multilevel models
+
+However, for the figures (3A and co) we keep 3 ages : Age at T1, Age at T2 and Age at T3, that are not gaussianized
+
+```{r}
+
+# sanity check
+
+summary(joined$Age_CP) # (2018) 51-98
+
+# Duplicate Age at T1 column   = Create duplicate of column with new name
+
+joinedew <- joined %>%         
+  mutate(Age_T1 = Age_CP)
+
+rm(joined)
+joined <- joinedew
+rm(joinedew)
+
+summary(joined$Age_CP) # (2018) 51-98
+summary(joined$Age_T1) # (2018) 51-98
+
+# Duplicate IPS   = Create duplicate of column with new name
+
+joinedew <- joined %>%         
+  mutate(IPS = IPS_Etab_CP)
+
+rm(joined)
+joined <- joinedew
+rm(joinedew)
+
+summary(joined$IPS_Etab_CP) # (2018) 51-98
+summary(joined$IPS) # (2018) 51-98
+
+# Add additional column for Age at T2 and Age at T3
+
+# names(joined)[names(joined) == "Age_CP"] <- "Age_T1"
+
+joined$IPS            <- as.numeric(joined$IPS)
+joined$IPS_Etab_CP    <- as.numeric(joined$IPS_Etab_CP)
+joined$Age_CP <- as.numeric(joined$Age_CP)
+joined$Age_T1 <- as.numeric(joined$Age_T1)
+joined$Age_T2 <- as.numeric(joined$Age_T1 + 4)
+joined$Age_T3 <- as.numeric(joined$Age_T1 + 12)
+
+summary(joined$Age_CP)
+summary(joined$Age_T1)
+summary(joined$Age_T2)
+summary(joined$Age_T3)
+
+```
+
+
+### + Data pre selection
+
+```{r echo=TRUE}
+
+nrow(joined[is.na(joined$T1_Lire_Nombre_P), ]) # n = 0
+
+Math_T1 <- c("T1_Ecri_Nombre_P",
+             "T1_Lire_Nombre_P",
+             "T1_Resoud_Pb_P",
+             "T1_Denombrer_P",
+             "T1_Compa_Nombre_P",
+             "T1_Ligne_Num_P")
+
+joined <- joined[ , c("ID_Eleve","ID_etab_class", "T1_Math", "T2_Math", "T3_Math", Math_T1,
+                      "T2_Ligne_Num_P", "T3_Ligne_Num_P", "T2_Resoud_Pb_P", "T3_Resoud_Pb_P",
+                              "T1_Language", "T2_Language", "T3_Language",
+                              "IPS_Etab_CP", "IPS", "Sexe_Boys", "Sexe_Num",
+                              "Age_CP", "Age_T1", "Age_T2", "Age_T3",
+                              "boy_proportion","Taille_Classe",
+                              "First_sexe_in_T1_Math", "First_sexe_in_T1_Language",
+                              "First_mean_sexe_in_T1_Math", "First_mean_sexe_in_T1_Language",
+                               "Categ_Etab_CP" , "Categ_10c_CP", "first_in_T1_Math")]
+
+joined$Taille_Classe <- as.numeric(joined$Taille_Classe)
+
+
+```
+
+### + 1) Gaussianize Variables 
+
+To gaussianize :
+
+- "T1_Math", "T2_Math", "T3_Math", + math_T1
+- "T1_Ligne_Num", "T2_Ligne_Num", "T3_Ligne_Num",
+- "T1_Resoud_Pb", "T2_Resoud_Pb", "T3_Resoud_Pb",
+- "T1_Language", "T2_Language", "T3_Language",
+- IPS_Etab_CP
+- Age_CP
+- boy_proportion
+- Taille_Classe
+- First_sexe_in_T1_Math
+- First_sexe_in_T1_Language
+
+Keep off the others : "ID_etab_class", "Sexe_Boys", "Sexe_Num", "ID_Eleve", "Categ_Etab_CP" , "Categ_10c_CP"
+- Age_T1, Age_T2, Age_T3
+
+```{r echo=TRUE}
+
+                            
+joined_gau    <- as.data.frame(Gaussianize(joined[, c("T1_Math", "T2_Math", "T3_Math", "T1_Ecri_Nombre_P", "T1_Resoud_Pb_P",
+                                                    "T1_Denombrer_P", "T1_Compa_Nombre_P", "T1_Ligne_Num_P", "T2_Ligne_Num_P",
+                                                    "T3_Ligne_Num_P", "T2_Resoud_Pb_P", "T3_Resoud_Pb_P", "T1_Language",
+                                                    "T2_Language", "T3_Language", "Age_CP", "IPS_Etab_CP", "boy_proportion",
+                                                    "Taille_Classe")],
+                                         type = c("s"), method = c("IGMM"), return.u = TRUE))
+
+
+```
+
+
+```{r echo=TRUE}
+
+
+names(joined_gau)[names(joined_gau) == "T1_Math.U"]                       <- "T1_Math"
+names(joined_gau)[names(joined_gau) == "T2_Math.U"]                       <- "T2_Math"
+names(joined_gau)[names(joined_gau) == "T3_Math.U"]                       <- "T3_Math"
+
+names(joined_gau)[names(joined_gau) == "T1_Ligne_Num_P.U"]                <- "T1_Ligne_Num_P"
+names(joined_gau)[names(joined_gau) == "T2_Ligne_Num_P.U"]                <- "T2_Ligne_Num_P"
+names(joined_gau)[names(joined_gau) == "T3_Ligne_Num_P.U"]                <- "T3_Ligne_Num_P"
+
+names(joined_gau)[names(joined_gau) == "T1_Resoud_Pb_P.U"]                <- "T1_Resoud_Pb_P"
+names(joined_gau)[names(joined_gau) == "T2_Resoud_Pb_P.U"]                <- "T2_Resoud_Pb_P"
+names(joined_gau)[names(joined_gau) == "T3_Resoud_Pb_P.U"]                <- "T3_Resoud_Pb_P"
+
+names(joined_gau)[names(joined_gau) == "T1_Language.U"]                   <- "T1_Language"
+names(joined_gau)[names(joined_gau) == "T2_Language.U"]                   <- "T2_Language"
+names(joined_gau)[names(joined_gau) == "T3_Language.U"]                   <- "T3_Language"
+
+names(joined_gau)[names(joined_gau) == "T1_Ecri_Nombre_P.U"]              <- "T1_Ecri_Nombre_P"
+# names(joined_gau)[names(joined_gau) == "T1_Lire_Nombre_P.U"]              <- "T1_Lire_Nombre_P"
+names(joined_gau)[names(joined_gau) == "T1_Denombrer_P.U"]                <- "T1_Denombrer_P"
+names(joined_gau)[names(joined_gau) == "T1_Compa_Nombre_P.U"]             <- "T1_Compa_Nombre_P"
+
+names(joined_gau)[names(joined_gau) == "IPS_Etab_CP.U"]                   <- "IPS_Etab_CP"
+names(joined_gau)[names(joined_gau) == "Age_CP.U"]                        <- "Age_CP"
+names(joined_gau)[names(joined_gau) == "boy_proportion.U"]                <- "boy_proportion"
+names(joined_gau)[names(joined_gau) == "Taille_Classe.U"]                 <- "Taille_Classe"
+#names(joined_gau)[names(joined_gau) == "First_sexe_in_T1_Math.U"]         <- "First_sexe_in_T1_Math"
+#names(joined_gau)[names(joined_gau) == "First_sexe_in_T1_Language.U"]     <- "First_sexe_in_T1_Language"
+
+joined_gau$T1_Math                       <- as.numeric(joined_gau$T1_Math)
+joined_gau$T2_Math                       <- as.numeric(joined_gau$T2_Math)
+joined_gau$T3_Math                       <- as.numeric(joined_gau$T3_Math)
+joined_gau$T1_Ligne_Num_P                <- as.numeric(joined_gau$T1_Ligne_Num_P)
+joined_gau$T2_Ligne_Num_P                <- as.numeric(joined_gau$T2_Ligne_Num_P)
+joined_gau$T3_Ligne_Num_P                <- as.numeric(joined_gau$T3_Ligne_Num_P)
+joined_gau$T1_Resoud_Pb_P                <- as.numeric(joined_gau$T1_Resoud_Pb_P)
+joined_gau$T2_Resoud_Pb_P                <- as.numeric(joined_gau$T2_Resoud_Pb_P)
+joined_gau$T3_Resoud_Pb_P                <- as.numeric(joined_gau$T3_Resoud_Pb_P)
+joined_gau$T1_Ecri_Nombre_P              <- as.numeric(joined_gau$T1_Ecri_Nombre_P)
+# joined_gau$T1_Lire_Nombre_P              <- as.numeric(joined_gau$T1_Lire_Nombre_P)
+joined_gau$T1_Denombrer_P                <- as.numeric(joined_gau$T1_Denombrer_P)
+joined_gau$T1_Compa_Nombre_P             <- as.numeric(joined_gau$T1_Compa_Nombre_P)
+
+joined_gau$T1_Language                 <- as.numeric(joined_gau$T1_Language)
+joined_gau$T2_Language                 <- as.numeric(joined_gau$T2_Language)
+joined_gau$T3_Language                 <- as.numeric(joined_gau$T3_Language)
+joined_gau$IPS_Etab_CP                 <- as.numeric(joined_gau$IPS_Etab_CP)
+joined_gau$Age_CP                      <- as.numeric(joined_gau$Age_CP)
+joined_gau$boy_proportion              <- as.numeric(joined_gau$boy_proportion)
+joined_gau$Taille_Classe               <- as.numeric(joined_gau$Taille_Classe)
+
+#joined_gau$First_sexe_in_T1_Math       <- as.numeric(joined_gau$First_sexe_in_T1_Math)
+#joined_gau$First_sexe_in_T1_Language   <- as.numeric(joined_gau$First_sexe_in_T1_Language)
+
+```
+
+### + 2) Add Gaussianize and non Gaussianized
+
+"ID_etab_class", "Sexe_Boys", "Sexe_Num", "ID_Eleve", "Categ_Etab_CP" , "Categ_10c_CP", "Age_T1", "Age_T2", "Age_T3"
+"First_sexe_in_T1_Math", "First_sexe_in_T1_Language"
++ "boy_prop", "Age_CAT"
+
+```{r echo=TRUE}
+
+# Creating Boy_Prop
+
+joinedew <- joined %>%         
+  mutate(boy_prop = boy_proportion)
+rm(joined)
+joined <- joinedew
+rm(joinedew)
+joined$boy_prop <- as.numeric(joined$boy_prop)
+
+# Creating Age_CAT
+
+summary(joined$Age_CP)
+joined$Age_CAT <- case_when((joined$Age_CP < 69) ~ "Young",
+                              (joined$Age_CP > 68 & joined$Age_CP < 81) ~ "Normal",
+                              (joined$Age_CP > 80) ~ "Late")
+
+joined$Age_CAT   <- as.factor(joined$Age_CAT)
+summary(joined$Age_CAT)
+
+# Gathering gaussianized and non gaussianized variables
+
+Base <- joined[, c("ID_etab_class", "Sexe_Boys", "Sexe_Num", "ID_Eleve", "Categ_Etab_CP","Categ_10c_CP", "Age_T1", "Age_T2", "Age_T3", "boy_prop", "Age_CAT" , "IPS_Etab_CP", "first_in_T1_Math", "First_sexe_in_T1_Math", "First_sexe_in_T1_Language", "First_mean_sexe_in_T1_Math", "First_mean_sexe_in_T1_Language")]
+
+names(joined_gau)[names(joined_gau) == "IPS_Etab_CP"]                 <- "IPS"
+
+joined_base_gaussian_3 <- cbind(Base, joined_gau)
+rm(Base, joined_gau)
+glimpse(joined_base_gaussian_3)
+
+# Missmatch to correct for Sexe / Sexe_Boys
+
+joined_base_gaussian_3$Sexe_Num      <- as.numeric(joined_base_gaussian_3$Sexe_Num)
+joined_base_gaussian_3$Sexe_Boys     <- as.factor(joined_base_gaussian_3$Sexe_Boys)
+joined_base_gaussian_3$Categ_Etab_CP <- as.factor(joined_base_gaussian_3$Categ_Etab_CP)
+joined_base_gaussian_3$Categ_10c_CP  <- as.factor(joined_base_gaussian_3$Categ_10c_CP)
+joined_base_gaussian_3$boy_prop      <- as.numeric(joined_base_gaussian_3$boy_prop)
+joined_base_gaussian_3$Age_CAT       <- as.factor(joined_base_gaussian_3$Age_CAT)
+joined_base_gaussian_3$Age_CP        <- as.numeric(joined_base_gaussian_3$Age_CP)
+joined_base_gaussian_3$Age_T1        <- as.numeric(joined_base_gaussian_3$Age_T1)
+joined_base_gaussian_3$IPS           <- as.numeric(joined_base_gaussian_3$IPS)
+
+joined_base_gaussian_3$first_in_T1_Math  <- as.factor(joined_base_gaussian_3$first_in_T1_Math)
+
+joined_base_gaussian_3$First_sexe_in_T1_Math       <- as.numeric(joined_base_gaussian_3$First_sexe_in_T1_Math)
+joined_base_gaussian_3$First_sexe_in_T1_Language   <- as.numeric(joined_base_gaussian_3$First_sexe_in_T1_Language)
+joined_base_gaussian_3$First_mean_sexe_in_T1_Math       <- as.numeric(joined_base_gaussian_3$First_mean_sexe_in_T1_Math)
+joined_base_gaussian_3$First_mean_sexe_in_T1_Language   <- as.numeric(joined_base_gaussian_3$First_mean_sexe_in_T1_Language)
+
+```
+
+### + 3) Heterogeneity
+
+After T1_Math is gaussianized  => create Heterogeneity_T1_Math and Heterogeneity_T1_Language
+
+```{r echo=TRUE}
+
+
+# 1) compute sd for Math at T1 = Heterogeneity in Math at T1
+
+reversed_table <- melt(joined_base_gaussian_3[, c("T1_Math","ID_etab_class")], id = c("ID_etab_class"))
+heterogeneities <- dcast(reversed_table, ID_etab_class ~ variable, sd)
+names(heterogeneities) <- c("ID_etab_class", paste0("heterogeneity_",  c("T1_Math")))
+
+# merge heterogeneities and main classes table
+joined_base_gau_hetero_3 <- merge(joined_base_gaussian_3, heterogeneities[ , c("ID_etab_class", "heterogeneity_T1_Math")],
+                 by = "ID_etab_class")
+
+mean(joined_base_gau_hetero_3$heterogeneity_T1_Math) #0.86
+sd(joined_base_gau_hetero_3$heterogeneity_T1_Math) #0.20
+
+joined_hetero_Math_3  <- as.data.frame(Gaussianize(joined_base_gau_hetero_3[, c("heterogeneity_T1_Math")],
+                                         type = c("s"), method = c("IGMM"), return.u = TRUE))
+
+mean(joined_hetero_Math_3$Y1.U) #0
+sd(joined_hetero_Math_3$Y1.U) #1
+
+names(joined_hetero_Math_3)[names(joined_hetero_Math_3) == "Y1.U"] <- "heterogeneity_T1_Math_New"
+
+Base <- joined[, c("ID_etab_class")]
+
+rm(heterogeneities, reversed_table)
+
+joined_base_gau_H_3 <- cbind(joined_base_gaussian_3, joined_hetero_Math_3)
+names(joined_base_gau_H_3)[names(joined_base_gau_H_3) == "heterogeneity_T1_Math_New"] <- "heterogeneity_T1_Math"
+
+# 1) compute sd for Language at T1 = Heterogeneity in Language at T1
+
+reversed_table <- melt(joined_base_gaussian_3[, c("T1_Language","ID_etab_class")], id = c("ID_etab_class"))
+heterogeneities <- dcast(reversed_table, ID_etab_class ~ variable, sd)
+names(heterogeneities) <- c("ID_etab_class", paste0("heterogeneity_",  c("T1_Language")))
+
+# merge heterogeneities and main classes table
+joined_base_gau_hetero_lang_3 <- merge(joined_base_gaussian_3, heterogeneities[ , c("ID_etab_class", "heterogeneity_T1_Language")],
+                 by = "ID_etab_class")
+
+mean(joined_base_gau_hetero_lang_3$heterogeneity_T1_Language) #0.84
+sd(joined_base_gau_hetero_lang_3$heterogeneity_T1_Language) #0.18
+
+joined_hetero_Lang_3  <- as.data.frame(Gaussianize(joined_base_gau_hetero_lang_3[, c("heterogeneity_T1_Language")],
+                                         type = c("s"), method = c("IGMM"), return.u = TRUE))
+
+mean(joined_hetero_Lang_3$Y1.U) #0
+sd(joined_hetero_Lang_3$Y1.U) #1
+
+names(joined_hetero_Lang_3)[names(joined_hetero_Lang_3) == "Y1.U"] <- "heterogeneity_T1_Lang_New"
+
+
+rm(heterogeneities, reversed_table)
+
+joined_base_gau_Fin_3 <- cbind(joined_base_gau_H_3, joined_hetero_Lang_3)
+names(joined_base_gau_Fin_3)[names(joined_base_gau_Fin_3) == "heterogeneity_T1_Lang_New"] <- "heterogeneity_T1_Lang"
+
+rm(joined_base_gaussian_3, joined_base_gau_H_3, joined_base_gau_hetero_3, joined_base_gau_hetero_lang_3, joined_hetero_Lang_3, joined_hetero_Math_3)
+
+Joined_Fin_3 <- joined_base_gau_Fin_3
+
+rm(joined_base_gau_Fin_3)
+
+glimpse(Joined_Fin_3)
+
+```
+
+
+
+### + 4) Detailed DATA
+
+classes ( > 5 to < 28 per class) 
+
+joined : data from "joined" in the SCRIPT #3 all ages from 51 to 99 months
+
+Joined_Fin_3 : data Gaussianized from joined 
+
+DATA_AGE_gau_Base_n : data Gau from joined then selection on Normal age (69 to 80 months both included)
+Decision with Benedict to take off children who are in advance or late, as they are very different from the others, while keeping variables with mean per class with their mean.
+
+DATA_AGE_gau_Base_30n : data Gau from joined then selection on normal age, then Selected classes with min 30% of boys and 30% of girls 
+
+```{r}
+
+summary(Joined_Fin_3$Age_T1) # 51-98
+
+# select Normal age at T1
+
+DATA_AGE_gau_Base_n = Joined_Fin_3[(Joined_Fin_3$Age_T1 >= 69) & (Joined_Fin_3$Age_T1 <= 80) ,]
+summary(DATA_AGE_gau_Base_n$Age_T1)
+glimpse(DATA_AGE_gau_Base_n)
+
+# select Normal age at T1 + classes 30% boys/girls
+
+summary(DATA_AGE_gau_Base_n$boy_prop)
+typeof(DATA_AGE_gau_Base_n$boy_prop)
+DATA_AGE_gau_Base_30n = DATA_AGE_gau_Base_n[(DATA_AGE_gau_Base_n$boy_prop >= 0.30000) & (DATA_AGE_gau_Base_n$boy_prop <= 0.70000) ,]
+summary(DATA_AGE_gau_Base_30n$boy_prop)
+
+
+```
+
+### + 5) Save DATA 
+
+classes ( > 5 to < 28 per class) 
+
+joined : data from "joined" in the SCRIPT #3 all ages from 51 to 99 months
+
+Joined_Fin_3 : data Gaussianized from joined 
+
+DATA_AGE_gau_Base_n : data Gau from joined then selection on Normal age (69 to 80 months both included)
+Decision with Benedict to take off children who are in advance or late, as they are very different from the others, while keeping variables with mean per class with their mean.
+
+DATA_AGE_gau_Base_30n : data Gau from joined then selection on normal age, then Selected classes with min 30% of boys and 30% of girls 
+
+```{r}
+
+save.image(file = paste0("~/Data/cohort_", ANNEE_COHORTE, "_", IMPUTED, "_ModRegLin_Gau_From_joined_VF.RData"))
+
+```
+

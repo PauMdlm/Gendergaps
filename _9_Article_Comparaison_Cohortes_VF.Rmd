@@ -1,0 +1,774 @@
+---
+title: "Graph_3_CohensD"
+author: "Pauline MARTINOT"
+date: "Nov 2023"
+output:
+  pdf_document: default
+  html_document: default
+---
+
+
+# Parameters to set before launch of the pipeline
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+
+library(tidyverse)
+library(dplyr)
+library(ggplot2)
+library(reshape2)
+library(alluvial)
+library(patchwork)
+library(gmodels)
+library(rmarkdown)
+library(ciTools)
+library(rstatix)
+
+library(lmerTest)
+library(glmertree)
+library(performance)
+library(broom)
+
+```
+
+
+# Ttest and ANOVA on Gau data_n = Table S12 and Table S13
+
+### + Data Gau
+
+```{r}
+
+
+# load("~/Data/cohort_2018_imputed_joined_n.RData")
+load(file = paste0("~/Data/cohort_2018_imputed_ModRegLin_Gau_From_joined_complete_v06112023.RData")) # DATA_AGE_gau_Base_n
+DATA_2018 <- DATA_AGE_gau_Base_n[, c("ID_etab_class", "Sexe_Num", "T1_Math", "T2_Math", "T3_Math", "T1_Language", "T2_Language", "T3_Language", "IPS_Etab_CP", "Age_CP", "heterogeneity_T1_Math", "boy_proportion", "First_sexe_in_T1_Math", "Taille_Classe")]
+rm(DATA_AGE_gau_Base_n)
+
+#load("~/Data/cohort_2019_imputed_joined_n.RData")
+load(file = paste0("~/Data/cohort_2019_imputed_ModRegLin_Gau_From_joined_complete_v06112023.RData")) # DATA_AGE_gau_Base_n
+DATA_2019 <- DATA_AGE_gau_Base_n[, c("ID_etab_class", "Sexe_Num","T1_Math", "T2_Math", "T3_Math", "T1_Language", "T2_Language", "T3_Language", "IPS_Etab_CP", "Age_CP", "heterogeneity_T1_Math", "boy_proportion", "First_sexe_in_T1_Math", "Taille_Classe")]
+rm(DATA_AGE_gau_Base_n)
+
+#load("~/Data/cohort_2020_imputed_joined_n.RData")
+load(file = paste0("~/Data/cohort_2020_imputed_ModRegLin_Gau_From_joined_complete_v06112023.RData")) # DATA_AGE_gau_Base_n
+DATA_2020 <- DATA_AGE_gau_Base_n[, c("ID_etab_class", "Sexe_Num","T1_Math", "T2_Math", "T3_Math", "T1_Language", "T2_Language", "T3_Language", "IPS_Etab_CP", "Age_CP", "heterogeneity_T1_Math", "boy_proportion", "First_sexe_in_T1_Math", "Taille_Classe")]
+rm(classes, DATA_AGE_gau_Base_30n, DATA_AGE_gau_Base_n, data_depp, joined, Joined_Fin_3, joined30, joined30_n, joined_n,  m1, model1)
+
+#load("~/Data/cohort_2021_imputed_joined_n.RData")
+load(file = paste0("~/Data/cohort_2021_imputed_ModRegLin_Gau_From_joined_complete_v06112023.RData")) # DATA_AGE_gau_Base_n
+DATA_2021 <- DATA_AGE_gau_Base_n[, c("ID_etab_class", "Sexe_Num","T1_Math", "T2_Math", "T3_Math", "T1_Language", "T2_Language", "T3_Language", "IPS_Etab_CP", "Age_CP", "heterogeneity_T1_Math", "boy_proportion", "First_sexe_in_T1_Math", "Taille_Classe")]
+rm(classes, DATA_AGE_gau_Base_30n, DATA_AGE_gau_Base_n, data_depp, joined, Joined_Fin_3, joined30, joined30_n, joined_n)
+
+
+```
+
+### + Effects of Covid19 (absence of school) between 2018, 2019, 2020 and 2021
+
+```{r}
+
+# 1 base of data with all the 3 millions of children and 1 common variable (e.g., Year)
+
+DATA_2018$Year    <- 2018
+DATA_2019$Year    <- 2019
+DATA_2020$Year    <- 2020
+DATA_2021$Year    <- 2021
+
+DATA_2018$Diff_Math_T3_T2 <- as.numeric(DATA_2018$T3_Math - DATA_2018$T2_Math)
+mean(DATA_2018$Diff_Math_T3_T2)
+summary(DATA_2018$Diff_Math_T3_T2)
+DATA_2018$Diff_Math_T2_T1 <- as.numeric(DATA_2018$T2_Math - DATA_2018$T1_Math)
+mean(DATA_2018$Diff_Math_T2_T1)
+summary(DATA_2018$Diff_Math_T2_T1)
+DATA_2018$Diff_Lang_T3_T2 <- as.numeric(DATA_2018$T3_Language - DATA_2018$T2_Language)
+mean(DATA_2018$Diff_Lang_T3_T2)
+summary(DATA_2018$Diff_Lang_T3_T2)
+DATA_2018$Diff_Lang_T2_T1 <- as.numeric(DATA_2018$T2_Language - DATA_2018$T1_Language)
+mean(DATA_2018$Diff_Lang_T2_T1)
+summary(DATA_2018$Diff_Lang_T2_T1)
+
+DATA_2019$Diff_Math_T3_T2 <- as.numeric(DATA_2019$T3_Math - DATA_2019$T2_Math)
+mean(DATA_2019$Diff_Math_T3_T2)
+summary(DATA_2019$Diff_Math_T3_T2)
+DATA_2019$Diff_Math_T2_T1 <- as.numeric(DATA_2019$T2_Math - DATA_2019$T1_Math)
+mean(DATA_2019$Diff_Math_T2_T1)
+summary(DATA_2019$Diff_Math_T2_T1)
+DATA_2019$Diff_Lang_T3_T2 <- as.numeric(DATA_2019$T3_Language - DATA_2019$T2_Language)
+mean(DATA_2019$Diff_Lang_T3_T2)
+summary(DATA_2019$Diff_Lang_T3_T2)
+DATA_2019$Diff_Lang_T2_T1 <- as.numeric(DATA_2019$T2_Language - DATA_2019$T1_Language)
+mean(DATA_2019$Diff_Lang_T2_T1)
+summary(DATA_2019$Diff_Lang_T2_T1)
+
+DATA_2020$Diff_Math_T3_T2 <- as.numeric(DATA_2020$T3_Math - DATA_2020$T2_Math)
+mean(DATA_2020$Diff_Math_T3_T2)
+summary(DATA_2020$Diff_Math_T3_T2)
+DATA_2020$Diff_Math_T2_T1 <- as.numeric(DATA_2020$T2_Math - DATA_2020$T1_Math)
+mean(DATA_2020$Diff_Math_T2_T1)
+summary(DATA_2020$Diff_Math_T2_T1)
+DATA_2020$Diff_Lang_T3_T2 <- as.numeric(DATA_2020$T3_Language - DATA_2020$T2_Language)
+mean(DATA_2020$Diff_Lang_T3_T2)
+summary(DATA_2020$Diff_Lang_T3_T2)
+DATA_2020$Diff_Lang_T2_T1 <- as.numeric(DATA_2020$T2_Language - DATA_2020$T1_Language)
+mean(DATA_2020$Diff_Lang_T2_T1)
+summary(DATA_2020$Diff_Lang_T2_T1)
+
+DATA_2021$Diff_Math_T3_T2 <- as.numeric(DATA_2021$T3_Math - DATA_2021$T2_Math)
+mean(DATA_2021$Diff_Math_T3_T2)
+summary(DATA_2021$Diff_Math_T3_T2)
+DATA_2021$Diff_Math_T2_T1 <- as.numeric(DATA_2021$T2_Math - DATA_2021$T1_Math)
+mean(DATA_2021$Diff_Math_T2_T1)
+summary(DATA_2021$Diff_Math_T2_T1)
+DATA_2021$Diff_Lang_T3_T2 <- as.numeric(DATA_2021$T3_Language - DATA_2021$T2_Language)
+mean(DATA_2021$Diff_Lang_T3_T2)
+summary(DATA_2021$Diff_Lang_T3_T2)
+DATA_2021$Diff_Lang_T2_T1 <- as.numeric(DATA_2021$T2_Language - DATA_2021$T1_Language)
+mean(DATA_2021$Diff_Lang_T2_T1)
+summary(DATA_2021$Diff_Lang_T2_T1)
+
+# New common data base
+
+DATA_totale <- rbind(DATA_2018, DATA_2019, DATA_2020, DATA_2021)
+
+### Building the gender gap difference per individual
+
+DATA_totale$Diff_Math_T3_T2 <- as.numeric(DATA_totale$T3_Math - DATA_totale$T2_Math)
+DATA_totale$Diff_Math_T2_T1 <- as.numeric(DATA_totale$T2_Math - DATA_totale$T1_Math)
+#DATA_totale$Diff_Math_T3_T1 <- as.numeric(DATA_totale$T3_Math - DATA_totale$T1_Math)
+DATA_totale$Diff_Lang_T3_T2 <- as.numeric(DATA_totale$T3_Language - DATA_totale$T2_Language)
+DATA_totale$Diff_Lang_T2_T1 <- as.numeric(DATA_totale$T2_Language - DATA_totale$T1_Language)
+#DATA_totale$Diff_Lang_T3_T1 <- as.numeric(DATA_totale$T3_Language - DATA_totale$T1_Language)
+
+# New common data base
+
+DATA_1819 <- rbind(DATA_2018, DATA_2019)
+DATA_1920 <- rbind(DATA_2019, DATA_2020)
+DATA_20_21 <- rbind(DATA_2020, DATA_2021)
+DATA_1821 <- rbind(DATA_2018, DATA_2021)
+
+DATA_totale$Year  <- as.factor(DATA_totale$Year)
+DATA_1819$Year    <- as.factor(DATA_1819$Year)
+DATA_1920$Year    <- as.factor(DATA_1920$Year)
+DATA_20_21$Year   <- as.factor(DATA_20_21$Year)
+DATA_1821$Year    <- as.factor(DATA_1821$Year)
+
+```
+
+### + Cohen s d
+
+We want
+(1) Cohen's d or difference of z-score means of gender gaps for Math T2 - Math T1
+
+(2) Cohen's d or ttest for gender gap differences T2-T1 in math in 2019 - 2018 
+
+```{r}
+
+# 2018
+# Cohen s d : diff T1-T2 in Math
+Data_Cohen <- DATA_2018[, c("Sexe_Boys", "Diff_Math_T2_T1")]
+Data_C1 <- Data_Cohen %>%
+  group_by(Sexe_Boys) %>%
+  cohens_d(Diff_Math_T2_T1 ~ Sexe_Boys, var.equal = FALSE, ref.group = "Boys")
+Data_T1 <- Data_C1[, c("Sexe_Boys", "effsize")]
+
+Data_Cohen <- DATA_1819[, c("Sexe_Boys", "Diff_Math_T2_T1", "Year")]
+
+
+```
+
+### + Fig Cohen s d
+
+
+```{r}
+
+# Diff T2-T1 Math %>% 2018/2019/2020/2021
+
+DATA_Cohen <- DATA_totale[ , c("Year", "Sexe_Boys", "Diff_Math_T2_T1")]
+
+DATA_C5 <- DATA_Cohen %>%
+  group_by(Year) %>%
+  cohens_d(Diff_Math_T2_T1 ~ Sexe_Boys, var.equal = FALSE, ref.group = "Boys")
+colnames(DATA_C5)[1] <- "Year"
+DATA_T1 <- DATA_C5[, c("Sexe_Boys", "effsize", "Year")]
+
+DATA_T1$effsize <- as.numeric(DATA_T1$effsize)
+DATA_T1$Year    <- as.factor(DATA_T1$Year) # check if need to transform in as.numeric
+
+legend_title <- "Year"
+ggplot(data = DATA_T1, aes(x = Year, y = effsize, color = Year)) +
+  geom_smooth(method = "lm", se = TRUE) +
+  geom_point(size = 4) +
+  geom_hline(yintercept = 0, col = "black") +
+  theme_minimal() +
+  theme(axis.line.y = element_line(arrow = arrow(length = unit(2, "mm")))) +  
+  theme(axis.title.x = element_text(size=9,  color="black", angle=0, hjust = 1)) +
+  theme(axis.text.x = element_text(size=9, color="black", angle=0, hjust = 1)) +
+  theme(axis.text.y = element_text(size=9, color="black", angle=0, hjust = 1)) +
+  ylab("Cohen's D T2-T1 gender gap in math") +
+  xlab("Cohort (Year)") +
+  #coord_cartesian(ylim=c(-0.014,0.26)) +
+  scale_color_manual(legend_title, values=c("deepskyblue", "blue2","midnightblue", "green")) 
+
+ggsave(file = paste0("~/img/", ANNEE_COHORTE, "Graph_Table_S12_", ANNEE_COHORTE, ".svg"), width = 7, height = 5)
+
+```
+
+
+### + ANOVA
+
+```{r}
+
+# Global model on all years
+
+DATA_totale$Year <- as.factor(DATA_totale$Year)
+#DATA_totale$Year <- as.numeric(DATA_totale$Year)
+
+model1 <- lmer(Diff_Math_T3_T2 ~
+
+                 Year +
+                 Sexe_Num +
+                 Sexe_Num*Year +
+
+                 (1 | ID_etab_class), 
+                 data = DATA_totale,  REML = FALSE)
+
+
+summary(model1)
+m1 <- coef(summary(model1))
+m1
+write.csv2(m1, file= paste0("~/table/Comparing_Model_18_19_20_21_Modele_Simple_wo_interactions_DiffMathT3_T2_VF.csv"), row.names = F)
+rm(model1, m1)
+
+# 2018 - 2019
+
+model1 <- lmer(Diff_Math_T3_T2 ~
+
+                 Year +
+                 Sexe_Num +
+                 Sexe_Num*Year +
+
+                 (1 | ID_etab_class), 
+                 data = DATA_1819,  REML = FALSE)
+
+
+summary(model1)
+m1 <- coef(summary(model1))
+m1
+write.csv2(m1, file= paste0("~/table/Comparing_Model_18_19_Modele_Simple_wo_interactions_DiffMathT3_T2_VF.csv"), row.names = F)
+rm(model1, m1)
+
+# 2019 - 2020
+
+model1 <- lmer(Diff_Math_T3_T2 ~
+
+                 Year +
+                 Sexe_Num +
+                 Sexe_Num*Year +
+
+                 (1 | ID_etab_class), 
+                 data = DATA_1920,  REML = FALSE)
+
+
+summary(model1)
+m1 <- coef(summary(model1))
+m1
+write.csv2(m1, file= paste0("~/table/Comparing_Model_19_20_Modele_Simple_wo_interactions_DiffMathT3_T2_VF.csv"), row.names = F)
+rm(model1, m1)
+
+# 2020 - 2021
+
+model1 <- lmer(Diff_Math_T3_T2 ~
+
+                 Year +
+                 Sexe_Num +
+                 Sexe_Num*Year +
+
+                 (1 | ID_etab_class), 
+                 data = DATA_20_21,  REML = FALSE)
+
+
+summary(model1)
+m1 <- coef(summary(model1))
+m1
+write.csv2(m1, file= paste0("~/table/Comparing_Model_20_21_Modele_Simple_wo_interactions_DiffMathT3_T2_VF.csv"), row.names = F)
+rm(model1, m1)
+
+
+
+
+
+#DATA_totale$Year <- as.factor(DATA_totale$Year)
+
+model1 <- lmer(Diff_Math_T3_T2 ~
+
+                 Year +
+                 #T1_Language +
+                 T1_Math +
+                 Sexe_Num +
+                 IPS_Etab_CP +
+                 Age_CP + # Age_CP does not work 
+                 heterogeneity_T1_Math +
+                 boy_proportion +
+                 First_sexe_in_T1_Math +
+                 Taille_Classe +
+                 
+                 Sexe_Num*Year +
+
+                 (1 | ID_etab_class), 
+                 data = DATA_totale,  REML = FALSE)
+
+
+summary(model1)
+m1 <- coef(summary(model1))
+m1
+write.csv2(m1, file= paste0("~/table/Comparing_Model_18_19_20_21_Modele_Complet_wo_interactions_DiffMathT3_T2_VF.csv"), row.names = F)
+rm(model1, m1)
+
+```
+
+
+
+
+
+
+
+# Data 3 Gau ANOVA 
+
+### Latest model ANOVA complexe : without any interactions but gender * year
+
+```{r}
+
+# 2018
+
+load("~/Data/These_Chap4_Data_Gau_2018_Worst_students.RData")
+DATA_2018 <- DATA_AGE_gau_Base_n
+rm(DATA_AGE_gau_Base_n)
+
+# 2019
+
+load("~/Data/These_Chap4_Data_Gau_2019_Worst_students.RData")
+DATA_2019 <- DATA_AGE_gau_Base_n
+rm(DATA_AGE_gau_Base_n)
+
+# 2020
+
+load("~/Data/These_Chap4_Data_Gau_2020_Worst_students.RData")
+DATA_2020 <- DATA_AGE_gau_Base_n
+rm(DATA_AGE_gau_Base_n)
+
+# 2021
+
+load("~/Data/These_Chap4_Data_Gau_2021_Worst_students.RData")
+DATA_2021 <- DATA_AGE_gau_Base_n
+rm(DATA_AGE_gau_Base_n)
+
+
+DATA_2018$Year    <- 2018
+DATA_2019$Year    <- 2019
+DATA_2020$Year    <- 2020
+DATA_2021$Year    <- 2021
+
+DATA_2018$Diff_Math_T3_T2 <- as.numeric(DATA_2018$T3_Math - DATA_2018$T2_Math)
+DATA_2018$Diff_Math_T2_T1 <- as.numeric(DATA_2018$T2_Math - DATA_2018$T1_Math)
+DATA_2018$Diff_Math_T3_T1 <- as.numeric(DATA_2018$T3_Math - DATA_2018$T1_Math)
+DATA_2018$Diff_Lang_T3_T2 <- as.numeric(DATA_2018$T3_Language - DATA_2018$T2_Language)
+DATA_2018$Diff_Lang_T2_T1 <- as.numeric(DATA_2018$T2_Language - DATA_2018$T1_Language)
+DATA_2018$Diff_Lang_T3_T1 <- as.numeric(DATA_2018$T3_Language - DATA_2018$T1_Language)
+
+DATA_2019$Diff_Math_T3_T2 <- as.numeric(DATA_2019$T3_Math - DATA_2019$T2_Math)
+DATA_2019$Diff_Math_T2_T1 <- as.numeric(DATA_2019$T2_Math - DATA_2019$T1_Math)
+DATA_2019$Diff_Math_T3_T1 <- as.numeric(DATA_2019$T3_Math - DATA_2019$T1_Math)
+DATA_2019$Diff_Lang_T3_T2 <- as.numeric(DATA_2019$T3_Language - DATA_2019$T2_Language)
+DATA_2019$Diff_Lang_T2_T1 <- as.numeric(DATA_2019$T2_Language - DATA_2019$T1_Language)
+DATA_2019$Diff_Lang_T3_T1 <- as.numeric(DATA_2019$T3_Language - DATA_2019$T1_Language)
+
+DATA_2020$Diff_Math_T3_T2 <- as.numeric(DATA_2020$T3_Math - DATA_2020$T2_Math)
+DATA_2020$Diff_Math_T2_T1 <- as.numeric(DATA_2020$T2_Math - DATA_2020$T1_Math)
+DATA_2020$Diff_Math_T3_T1 <- as.numeric(DATA_2020$T3_Math - DATA_2020$T1_Math)
+DATA_2020$Diff_Lang_T3_T2 <- as.numeric(DATA_2020$T3_Language - DATA_2020$T2_Language)
+DATA_2020$Diff_Lang_T2_T1 <- as.numeric(DATA_2020$T2_Language - DATA_2020$T1_Language)
+DATA_2020$Diff_Lang_T3_T1 <- as.numeric(DATA_2020$T3_Language - DATA_2020$T1_Language)
+
+DATA_2021$Diff_Math_T3_T2 <- as.numeric(DATA_2021$T3_Math - DATA_2021$T2_Math)
+DATA_2021$Diff_Math_T2_T1 <- as.numeric(DATA_2021$T2_Math - DATA_2021$T1_Math)
+DATA_2021$Diff_Math_T3_T1 <- as.numeric(DATA_2021$T3_Math - DATA_2021$T1_Math)
+DATA_2021$Diff_Lang_T3_T2 <- as.numeric(DATA_2021$T3_Language - DATA_2021$T2_Language)
+DATA_2021$Diff_Lang_T2_T1 <- as.numeric(DATA_2021$T2_Language - DATA_2021$T1_Language)
+DATA_2021$Diff_Lang_T3_T1 <- as.numeric(DATA_2021$T3_Language - DATA_2021$T1_Language)
+
+# New common data base
+
+DATA_totale <- rbind(DATA_2018, DATA_2019, DATA_2020, DATA_2021)
+
+### Building the gender gap difference per individual
+
+DATA_totale$Diff_Math_T3_T2 <- as.numeric(DATA_totale$T3_Math - DATA_totale$T2_Math)
+DATA_totale$Diff_Math_T2_T1 <- as.numeric(DATA_totale$T2_Math - DATA_totale$T1_Math)
+DATA_totale$Diff_Math_T3_T1 <- as.numeric(DATA_totale$T3_Math - DATA_totale$T1_Math)
+DATA_totale$Diff_Lang_T3_T2 <- as.numeric(DATA_totale$T3_Language - DATA_totale$T2_Language)
+DATA_totale$Diff_Lang_T2_T1 <- as.numeric(DATA_totale$T2_Language - DATA_totale$T1_Language)
+DATA_totale$Diff_Lang_T3_T1 <- as.numeric(DATA_totale$T3_Language - DATA_totale$T1_Language)
+
+# New common data base
+
+DATA_1819 <- rbind(DATA_2018, DATA_2019)
+DATA_1920 <- rbind(DATA_2019, DATA_2020)
+DATA_20_21 <- rbind(DATA_2020, DATA_2021)
+DATA_1821 <- rbind(DATA_2018, DATA_2021)
+
+DATA_totale$Year  <- as.factor(DATA_totale$Year)
+DATA_1819$Year    <- as.factor(DATA_1819$Year)
+DATA_1920$Year    <- as.factor(DATA_1920$Year)
+DATA_20_21$Year   <- as.factor(DATA_20_21$Year)
+DATA_1821$Year    <- as.factor(DATA_1821$Year)
+
+```
+
+```{r}
+
+#DATA_totale$Year <- as.factor(DATA_totale$Year)
+
+model1 <- lmer(Diff_Math_T3_T2 ~
+
+                 Year +
+                 T1_Language +
+                 T1_Math +
+                 Sexe_Num +
+                 IPS_Etab_CP +
+                 Age_CP + # Age_CP does not work 
+                 heterogeneity_T1_Math +
+                 boy_proportion +
+                 First_sexe_in_T1_Math +
+                 Taille_Classe +
+                 
+                 Sexe_Num*Year +
+
+                 (1 | ID_etab_class), 
+                 data = DATA_totale,  REML = FALSE)
+
+
+summary(model1)
+m1 <- coef(summary(model1))
+m1
+write.csv2(m1, file= paste0("~/table/Comparing_Model_18_19_20_21_Modele_Complet_wo_interactions_DiffMathT3_T2_VF.csv"), row.names = F)
+rm(model1, m1)
+
+```
+
+### ANOVA - Linear model of ANOVA
+
+We want to assess the interaction between the year and the gender gap difference between T2 and T1 and between T3 and T2.
+
+Our hypothesis is that the interaction will be positive and significant as the gender gap difference between T3 and T2 is larger in 2018 and 2022, years where children went to school for a longer time compared to the interaction between years and the gender gap difference between T2 and T1 that is similar according to the years. 
+
+We compare the individual difference between T3 - T2 in Math in function of the Year, and the Gender, with an interaction assessed between the Year and the gender (e.g., Year*Gender)
+
+```{r}
+# Model comparing Math level and language level between 2018, 2019, 2020 and 2021
+
+# Model Math T1
+
+model1 <- lm(T1_Math ~ Year,
+               data = DATA_totale)
+summary(model1)
+m1 <- coef(summary(model1))
+m1
+write.csv2(m1, file= paste0("~/table/ANOVA_Data_totale_MathT1.csv"), row.names = F)
+rm(model1, m1)
+
+
+library(rstatix)
+Anova_m1 <- anova_test(
+  data = DATA_totale,
+  T1_Math ~ Year,
+  effect.size = "ges")
+
+get_anova_table(Anova_m1, correction = "none")
+
+
+# Model Math T2
+
+model1 <- lm(T2_Math ~ Year,
+               data = DATA_totale)
+summary(model1)
+m1 <- coef(summary(model1))
+m1
+write.csv2(m1, file= paste0("~/table/ANOVA_Data_totale_MathT2.csv"), row.names = F)
+rm(model1, m1)
+
+# Model Math T3
+
+model1 <- lm(T3_Math ~ Year,
+               data = DATA_totale)
+summary(model1)
+m1 <- coef(summary(model1))
+m1
+write.csv2(m1, file= paste0("~/table/ANOVA_Data_totale_MathT3.csv"), row.names = F)
+rm(model1, m1)
+
+# Model Math T1 years 2018, 2019,  2020, 2021
+
+model1 <- lm(T1_Math ~ Year,
+               data = DATA_1819)
+summary(model1)
+m1 <- coef(summary(model1))
+m1
+write.csv2(m1, file= paste0("~/table/ANOVA_Data_totale_MathT1_1819.csv"), row.names = F)
+rm(model1, m1)
+
+model1 <- lm(T1_Math ~ Year,
+               data = DATA_1920)
+summary(model1)
+m1 <- coef(summary(model1))
+m1
+write.csv2(m1, file= paste0("~/table/ANOVA_Data_totale_MathT1_1920.csv"), row.names = F)
+rm(model1, m1)
+
+model1 <- lm(T1_Math ~ Year,
+               data = DATA_20_21)
+summary(model1)
+m1 <- coef(summary(model1))
+m1
+write.csv2(m1, file= paste0("~/table/ANOVA_Data_totale_MathT1_20_21.csv"), row.names = F)
+rm(model1, m1)
+
+model1 <- lm(T1_Math ~ Year,
+               data = DATA_1821)
+summary(model1)
+m1 <- coef(summary(model1))
+m1
+write.csv2(m1, file= paste0("~/table/ANOVA_Data_totale_MathT1_1821.csv"), row.names = F)
+rm(model1, m1)
+
+
+# Model Math T2 years 2018, 2019,  2020, 2021
+
+model1 <- lm(T2_Math ~ Year,
+               data = DATA_1819)
+summary(model1)
+m1 <- coef(summary(model1))
+m1
+write.csv2(m1, file= paste0("~/table/ANOVA_Data_totale_MathT2_1819.csv"), row.names = F)
+rm(model1, m1)
+
+model1 <- lm(T2_Math ~ Year,
+               data = DATA_1920)
+summary(model1)
+m1 <- coef(summary(model1))
+m1
+write.csv2(m1, file= paste0("~/table/ANOVA_Data_totale_MathT2_1920.csv"), row.names = F)
+rm(model1, m1)
+
+model1 <- lm(T2_Math ~ Year,
+               data = DATA_20_21)
+summary(model1)
+m1 <- coef(summary(model1))
+m1
+write.csv2(m1, file= paste0("~/table/ANOVA_Data_totale_MathT2_20_21.csv"), row.names = F)
+rm(model1, m1)
+
+model1 <- lm(T2_Math ~ Year,
+               data = DATA_1821)
+summary(model1)
+m1 <- coef(summary(model1))
+m1
+write.csv2(m1, file= paste0("~/table/ANOVA_Data_totale_MathT2_1821.csv"), row.names = F)
+rm(model1, m1)
+
+
+# Model Math T3 years 2018, 2019,  2020, 2021
+
+model1 <- lm(T3_Math ~ Year,
+               data = DATA_1819)
+summary(model1)
+m1 <- coef(summary(model1))
+m1
+write.csv2(m1, file= paste0("~/table/ANOVA_Data_totale_MathT3_1819.csv"), row.names = F)
+rm(model1, m1)
+
+model1 <- lm(T3_Math ~ Year,
+               data = DATA_1920)
+summary(model1)
+m1 <- coef(summary(model1))
+m1
+write.csv2(m1, file= paste0("~/table/ANOVA_Data_totale_MathT3_1920.csv"), row.names = F)
+rm(model1, m1)
+
+model1 <- lm(T3_Math ~ Year,
+               data = DATA_20_21)
+summary(model1)
+m1 <- coef(summary(model1))
+m1
+write.csv2(m1, file= paste0("~/table/ANOVA_Data_totale_MathT3_20_21.csv"), row.names = F)
+rm(model1, m1)
+
+model1 <- lm(T3_Math ~ Year,
+               data = DATA_1821)
+summary(model1)
+m1 <- coef(summary(model1))
+m1
+write.csv2(m1, file= paste0("~/table/ANOVA_Data_totale_MathT3_1821.csv"), row.names = F)
+rm(model1, m1)
+
+
+
+# Model Data totale
+
+model1 <- lm(Diff_Math_T3_T2 ~
+                 Year +
+                 Sexe_Num +
+                 Year*Sexe_Num,
+               data = DATA_totale)
+               
+summary(model1)
+m1 <- coef(summary(model1))
+m1
+write.csv2(m1, file= paste0("~/table/Comparing_Model_2018_2019_2020_2021_Math_T3_T2.csv"), row.names = F)
+rm(model1, m1)
+
+Anova_m1 <- anova_test(
+  data = DATA_totale,
+  Diff_Math_T3_T2 ~ Year + Sexe_Num + Year*Sexe_Num,
+  effect.size = "ges")
+
+get_anova_table(Anova_m1, correction = "none")
+
+
+# Model Data 1819
+
+model1 <- lm(Diff_Math_T3_T2 ~
+                 Year +
+                 Sexe_Num +
+                 Year*Sexe_Num,
+               data = DATA_1819)
+               
+summary(model1)
+m1 <- coef(summary(model1))
+m1
+write.csv2(m1, file= paste0("~/table/Comparing_DATA_1819_Math_T3_T2.csv"), row.names = F)
+rm(model1, m1)
+
+# Model Data 1920
+
+model1 <- lm(Diff_Math_T3_T2 ~
+                 Year +
+                 Sexe_Num +
+                 Year*Sexe_Num,
+               data = DATA_1920)
+               
+summary(model1)
+m1 <- coef(summary(model1))
+m1
+write.csv2(m1, file= paste0("~/table/Comparing_DATA_1920_Math_T3_T2.csv"), row.names = F)
+rm(model1, m1)
+
+# Model Data 2021
+
+model1 <- lm(Diff_Math_T3_T2 ~
+                 Year +
+                 Sexe_Num +
+                 Year*Sexe_Num,
+               data = DATA_20_21)
+               
+summary(model1)
+m1 <- coef(summary(model1))
+m1
+write.csv2(m1, file= paste0("~/table/Comparing_DATA_2021_Math_T3_T2.csv"), row.names = F)
+rm(model1, m1)
+
+# Model Data 1821
+
+model1 <- lm(Diff_Math_T3_T2 ~
+                 Year +
+                 Sexe_Num +
+                 Year*Sexe_Num,
+               data = DATA_1821)
+               
+summary(model1)
+m1 <- coef(summary(model1))
+m1
+write.csv2(m1, file= paste0("~/table/Comparing_DATA_1821_Math_T3_T2.csv"), row.names = F)
+rm(model1, m1)
+
+
+
+model0 <- lm(Diff_Math_T2_T1 ~ Year , data = DATA_totale)
+
+model2 <- lm(Diff_Math_T2_T1 ~
+                 Year +
+                 Sexe_Num +
+                 Year*Sexe_Num,
+               data = DATA_totale)
+               
+summary(model2)
+m2 <- coef(summary(model2))
+m2
+write.csv2(m2, file= paste0("~/table/Comparing_Model_2018_2019_2020_2021_Math_T2_T1.csv"), row.names = F)
+rm(model2, m2, model0)
+
+
+model0 <- lm(Diff_Math_T3_T1 ~ Year , data = DATA_totale)
+
+model4 <- lm(Diff_Math_T3_T1 ~
+                 Year +
+                 Sexe_Num +
+                 Year*Sexe_Num,
+               data = DATA_totale)
+               
+summary(model4)
+m4 <- coef(summary(model4))
+m4
+write.csv2(m4, file= paste0("~/table/Comparing_Model_2018_2019_2020_2021_Math_T3_T1.csv"), row.names = F)
+rm(model4, m4, model0)
+
+
+
+model1 <- lm(Diff_Lang_T3_T2 ~
+                 Year +
+                 Sexe_Num +
+                 Year*Sexe_Num,
+               data = DATA_totale)
+               
+summary(model1)
+m1 <- coef(summary(model1))
+m1
+write.csv2(m1, file= paste0("~/table/Comparing_Model_2018_2019_2020_2021_Lang_T3_T2.csv"), row.names = F)
+rm(model1, m1)
+
+
+model0 <- lm(Diff_Lang_T2_T1 ~ Year , data = DATA_totale)
+
+model2 <- lm(Diff_Lang_T2_T1 ~
+                 Year +
+                 Sexe_Num +
+                 Year*Sexe_Num,
+               data = DATA_totale)
+               
+summary(model2)
+m2 <- coef(summary(model2))
+m2
+write.csv2(m2, file= paste0("~/table/Comparing_Model_2018_2019_2020_2021_Lang_T2_T1.csv"), row.names = F)
+rm(model2, m2, model0)
+
+
+
+model0 <- lm(Diff_Lang_T3_T1 ~ Year , data = DATA_totale)
+
+model4 <- lm(Diff_Lang_T3_T1 ~
+                 Year +
+                 Sexe_Num +
+                 Year*Sexe_Num,
+               data = DATA_totale)
+               
+summary(model4)
+m4 <- coef(summary(model4))
+m4
+write.csv2(m4, file= paste0("~/table/Comparing_Model_2018_2019_2020_2021_Lang_T3_T1.csv"), row.names = F)
+rm(model4, m4, model0)
+
+
+rm(DATA_2018, DATA_2019, DATA_2020, DATA_2021, DATA_totale)
+
+```
+
+
+
