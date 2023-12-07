@@ -94,7 +94,7 @@ TEST = FALSE # TRUE if the notebook is currently being tested and want to run "f
 ```{r include=FALSE}
 
 if (ANNEE_COHORTE == 2018){
-  data_depp_1 <- readRDS("~/Data/Evalaide_1819_DonneesChercheursDomaines.rds")
+   data_depp_1 <- read.csv2("~/Desktop/education/data/data_depp_1819.csv", sep=';', header=TRUE) 
   } else if (ANNEE_COHORTE == 2019){
   data_depp_1 <- readRDS("~/Data/Evalaide_1920_DonneesChercheursDomaines.rds")
   } else if (ANNEE_COHORTE == 2020){
@@ -767,7 +767,7 @@ knitr::opts_chunk$set(echo = TRUE)
 
 # joined_imputed
 
-load(paste0("~/Data/cohort_2018_imputed_joined.RData"))
+load("~/Desktop/education/data/cohort_2018_imputed_joined.RData")
 joined_imputed    <- joined
 rm(joined)
 
@@ -806,8 +806,18 @@ data_depp_non_imputed_naomit_False <- data_depp_non_imputed_naomit_False[data_de
 
 ```
 
-```{r}
 
+# Gaussianize 
+
+1) Gaussianize : data_depp_non_imputed_naomit_True
+2) Gaussianize : data_depp_non_imputed_naomit_False
+
+### Gaussianize data_depp_non_imputed_naomit_True
+
+
+
+
+```{r}
 # Create _P variables for data_depp_na_omit_true and false
 
 Lang_T1_P       <- paste(Lang_T1, "_P", sep="")
@@ -836,7 +846,9 @@ dim(data_depp_non_imputed_naomit_False)
  }
 
 dim(data_depp_non_imputed_naomit_True)
+```
 
+```{r}
 ## computing variables
 
 data_depp_non_imputed_naomit_False$T1_Language <- apply(data_depp_non_imputed_naomit_False[ , c(Lang_T1_P)], 1, mean, na.rm = TRUE)
@@ -853,8 +865,50 @@ data_depp_non_imputed_naomit_True$T3_Language <- apply(data_depp_non_imputed_nao
 data_depp_non_imputed_naomit_True$T1_Math <- apply(data_depp_non_imputed_naomit_True[ , c(Math_T1_P)], 1, mean, na.rm = TRUE)
 data_depp_non_imputed_naomit_True$T2_Math <- apply(data_depp_non_imputed_naomit_True[ , c(Math_T2_P)], 1, mean, na.rm = TRUE)
 data_depp_non_imputed_naomit_True$T3_Math <- apply(data_depp_non_imputed_naomit_True[ , c(Math_T3_P)], 1, mean, na.rm = TRUE)
+```
 
 
+ "Categ_Etab_CP", "ID_etab_class", 
+ ,"Sexe_NUM", 
+```{r}
+
+library(jtools)
+library(LambertW)
+library(reshape2)
+
+data_depp_non_imputed_naomit_True$Sexe_NUM <- case_when(data_depp_non_imputed_naomit_True$Sexe == "Garcon" ~ "0.5",
+                                                        data_depp_non_imputed_naomit_True$Sexe == "Fille" ~ "-0.5")
+data_depp_non_imputed_naomit_True$Sexe_NUM <- as.numeric(data_depp_non_imputed_naomit_True$Sexe_NUM)
+
+data_depp_non_imputed_naomit_False$Sexe_NUM <- case_when(data_depp_non_imputed_naomit_False$Sexe == "Garcon" ~ "0.5",
+                                                        data_depp_non_imputed_naomit_False$Sexe == "Fille" ~ "-0.5")
+data_depp_non_imputed_naomit_False$Sexe_NUM <- as.numeric(data_depp_non_imputed_naomit_False$Sexe_NUM)
+
+
+joined_gau    <- as.data.frame(Gaussianize(data_depp_non_imputed_naomit_True[, c("Age_CP", "Taille_Classe", "IPS_Etab_CP", "Sexe_NUM",
+                                                                                 "T1_Math", "T2_Math", "T3_Math",
+                                                                                 "T1_Language", "T2_Language", "T3_Language",
+                                                                                 "T1_Resoud_Pb_P", "T2_Resoud_Pb_P", "T3_Resoud_Pb_P",
+                                                                                 "T1_Ligne_Num_P", "T2_Ligne_Num_P", "T3_Ligne_Num_P")],
+                                         type = c("s"), method = c("IGMM"), return.u = TRUE))
+
+joined_gau    <- as.data.frame(Gaussianize(data_depp_non_imputed_naomit_False[, c("Age_CP", "Taille_Classe", "IPS_Etab_CP","Sexe_NUM",
+                                                                                 "T1_Math", "T2_Math", "T3_Math",
+                                                                                 "T1_Language", "T2_Language", "T3_Language",
+                                                                                 "T1_Resoud_Pb_P", "T2_Resoud_Pb_P", "T3_Resoud_Pb_P",
+                                                                                 "T1_Ligne_Num_P", "T2_Ligne_Num_P", "T3_Ligne_Num_P")],
+                                         type = c("s"), method = c("IGMM"), return.u = TRUE))
+
+```
+
+
+
+Comparing 
+1) Joined_Fin_3 (equivalent to gaussianize joined)
+2) Gaussianize : data_depp_non_imputed_naomit_True
+3) Gaussianize : data_depp_non_imputed_naomit_False
+
+```{r}
 # Selection of variables to compare
 
 joined_imputed <- joined_imputed[ , c("ID_etab_class","Age_CP", "Taille_Classe", "IPS_Etab_CP", "Sexe",  "Categ_Etab_CP",
@@ -1463,7 +1517,207 @@ write_csv2(A, file = paste0("~/table/table_S4_thirdessay_", ANNEE_COHORTE, "Emer
 
 # Table S5 - description of tests
 
+#### Cohens d
 
+```{r}
+knitr::opts_chunk$set(echo = TRUE)
+
+# Parameters to set before launch of the pipeline
+
+ANNEE_COHORTE = "2018" # 2019 # 2020  # 2021 
+
+library(performance)
+library(broom)
+library(rstatix)
+library(table1)
+
+load(paste0("~/Data/cohort_", ANNEE_COHORTE, "_", IMPUTED,"_joined_n.RData"))
+
+Lang_T1 <- c("T1_Comp_Mots",
+             "T1_Comp_Phra",
+             "T1_Comp_Text",
+             "T1_Manip_Phon",
+             "T1_Manip_Syll",
+             "T1_Conn_Lettres",
+             "T1_Recon_Ecritu_L",
+             "T1_Compa_Lettres")
+
+Math_T1 <- c("T1_Ecri_Nombre",
+             "T1_Lire_Nombre",
+             "T1_Resoud_Pb",
+             "T1_Denombrer",
+             "T1_Compa_Nombre",
+             "T1_Ligne_Num")
+
+Lang_T2 <- c("T2_Comp_Phra",
+             "T2_Lire_Mots",
+             "T2_Lire_Text",
+             "T2_Ecri_Syll",
+             "T2_Ecri_Mots",
+             "T2_Manip_Phon",
+             "T2_Conn_Lettres")
+             
+Math_T2 <- c("T2_Compa_Nombre",
+             "T2_Ligne_Num",
+             "T2_Addition",
+             "T2_Soustract",
+             "T2_Ecri_Nombre",
+             "T2_Resoud_Pb")
+             
+Lang_T3 <- c("T3_Comp_Mots",
+             "T3_Comp_Phra",
+             "T3_Ecri_Syll",
+             "T3_Ecri_Mots",
+             "T3_Comp_Phra_Lu",
+             "T3_Comp_Text_Lu",
+             "T3_Lire_Mots",
+             "T3_Lire_Text")
+
+Math_T3 <- c("T3_Assemblage",
+             "T3_Ligne_Num",
+             "T3_Addition",
+             "T3_Soustract",
+             "T3_Calcul_Mental",
+             "T3_Ecri_Nombre",
+             "T3_Lire_Nombre",
+             # "T3_Repres_Nb",
+             "T3_Resoud_Pb")
+
+Lang_T1_P       <- paste(Lang_T1, "_P", sep="")
+Lang_T2_P       <- paste(Lang_T2, "_P", sep="")
+Lang_T3_P       <- paste(Lang_T3, "_P", sep="")
+Math_T1_P       <- paste(Math_T1, "_P", sep="")
+Math_T2_P       <- paste(Math_T2, "_P", sep="")
+Math_T3_P       <- paste(Math_T3, "_P", sep="")
+
+# Create a variable list which we want in Table S5
+
+listcohen <- c(Lang_T1_P, Lang_T2_P, Lang_T3_P,
+              Math_T1_P, Math_T2_P, Math_T3_P, 
+              "T1_Language", "T2_Language", "T3_Language",
+              "T1_Math", "T2_Math", "T3_Math")
+
+listVars <- c("ID_Eleve", Lang_T1_P, Lang_T2_P, Lang_T3_P,
+              Math_T1_P, Math_T2_P, Math_T3_P, 
+              "T1_Language", "T2_Language", "T3_Language",
+              "T1_Math", "T2_Math", "T3_Math", "Sexe")
+
+Data_Cohen <- joined_n[ , c(listVars)]
+
+Data_CO <- Data_Cohen %>%
+  mutate_at(c(listcohen), as.numeric)
+
+Data_Cohen <- Data_CO
+
+# # # # # # #
+
+library(gtsummary)
+library(tidyverse)
+
+CohenD <- function(data, variable, by, ...) {
+  
+  # Cohen s d, Hedges dg
+  
+  ES <- effectsize::cohens_d(data[[variable]], factor(data[[by]]),
+                             ci=.90,
+                             pooled_sd = TRUE,
+                             paired = FALSE,
+                             correction = TRUE)
+  
+  # Formatting statistic with CI
+  
+  est      <- style_sigfig(ES$Cohens_d)
+  ci_lower <- style_sigfig(ES$CI_low)
+  ci_upper <- style_sigfig(ES$CI_high)
+  
+  # Returning estimate with CI together
+  
+  tibble(
+    cohens_d = stringr::str_glue("{est} ({ci_lower}, {ci_upper})"),
+    interpret_d = stringr::str_glue("{effectsize::interpret_d(ES$Cohens_d, rules = 'cohen1988')}")
+  )
+  
+}
+
+
+Lang_T1_list <- c(Lang_T1_P, "Sexe")
+Lang_T2_list <- c(Lang_T2_P, "Sexe")
+Lang_T3_list <- c(Lang_T3_P, "Sexe")
+Math_T1_list <- c(Math_T1_P, "Sexe")
+Math_T2_list <- c(Math_T2_P, "Sexe")
+Math_T3_list <- c(Math_T3_P, "Sexe")
+
+
+
+tbl_Lang_T1 <- Data_Cohen %>%
+  select(Lang_T1_list) %>%
+  tbl_summary(by = Sexe, missing = "no", statistic = all_continuous() ~ "{mean} ; {sd}") %>%
+  add_p(test = everything() ~ t.test) %>%
+  add_stat(fns = everything() ~ CohenD) %>%
+  modify_header(cohen_d = "**ES (90% CI)**", interpret_d = "**Interpretation**") %>%
+  as_flex_table() %>%
+  flextable::save_as_docx(path = paste0("~/table/", ANNEE_COHORTE,"table_S5_CohensD_tbl_Lang_T1.docx"))
+tbl_Lang_T1
+
+tbl_Lang_T2 <-
+  Data_Cohen %>%
+  select(Lang_T2_list) %>%
+  tbl_summary(by = Sexe, missing = "no", statistic = all_continuous() ~ "{mean} ; {sd}") %>%
+  add_p(test = everything() ~ t.test) %>%
+  add_stat(fns = everything() ~ CohenD) %>%
+  modify_header(cohen_d = "**ES (90% CI)**", interpret_d = "**Interpretation**") %>%
+  as_flex_table() %>%
+  flextable::save_as_docx(path = paste0("~/table/", ANNEE_COHORTE,"table_S5_CohensD_tbl_Lang_T2.docx"))
+tbl_Lang_T2
+
+tbl_Lang_T3 <-
+  Data_Cohen %>%
+  select(Lang_T3_list) %>%
+  tbl_summary(by = Sexe, missing = "no", statistic = all_continuous() ~ "{mean} ; {sd}") %>%
+  add_p(test = everything() ~ t.test) %>%
+  add_stat(fns = everything() ~ CohenD) %>%
+  modify_header(cohen_d = "**ES (90% CI)**", interpret_d = "**Interpretation**") %>%
+  as_flex_table() %>%
+  flextable::save_as_docx(path = paste0("~/table/", ANNEE_COHORTE,"table_S5_CohensD_tbl_Lang_T3.docx"))
+tbl_Lang_T3
+
+tbl_Math_T1 <- Data_Cohen %>%
+  select(Math_T1_list) %>%
+  tbl_summary(by = Sexe, missing = "no", statistic = all_continuous() ~ "{mean} ; {sd}") %>%
+  add_p(test = everything() ~ t.test) %>%
+  add_stat(fns = everything() ~ CohenD) %>%
+  modify_header(cohen_d = "**ES (90% CI)**", interpret_d = "**Interpretation**") %>%
+  as_flex_table() %>%
+  flextable::save_as_docx(path = paste0("~/table/", ANNEE_COHORTE,"table_S5_CohensD_tbl_Math_T1.docx"))
+
+tbl_Math_T1
+
+tbl_Math_T2 <-
+  Data_Cohen %>%
+  select(Math_T2_list) %>%
+  tbl_summary(by = Sexe, missing = "no", statistic = all_continuous() ~ "{mean} ; {sd}") %>%
+  add_p(test = everything() ~ t.test) %>%
+  add_stat(fns = everything() ~ CohenD) %>%
+  modify_header(cohen_d = "**ES (90% CI)**", interpret_d = "**Interpretation**") %>%
+  as_flex_table() %>%
+  flextable::save_as_docx(path = paste0("~/table/", ANNEE_COHORTE,"table_S5_CohensD_tbl_Math_T2.docx"))
+tbl_Math_T2
+
+tbl_Math_T3 <-
+  Data_Cohen %>%
+  select(Math_T3_list) %>%
+  tbl_summary(by = Sexe, missing = "no", statistic = all_continuous() ~ "{mean} ; {sd}") %>%
+  add_p(test = everything() ~ t.test) %>%
+  add_stat(fns = everything() ~ CohenD) %>%
+  modify_header(cohen_d = "**ES (90% CI)**", interpret_d = "**Interpretation**") %>%
+  as_flex_table() %>%
+  flextable::save_as_docx(path = paste0("~/table/", ANNEE_COHORTE,"table_S5_CohensD_tbl_Math_T3.docx"))
+
+
+```
+
+
+#### Percent success 
 
 ```{r}
 
@@ -1537,7 +1791,7 @@ Classes_mixity <- Classes_mixity[ , c("Age_CP_mean_per_class", "Taille_Classe", 
 
 ```
 
-### Table S6 - letter to the reviewers : 1rst part
+# Table S6 - letter to the reviewers : 1rst part
 
 ```{r}
 
