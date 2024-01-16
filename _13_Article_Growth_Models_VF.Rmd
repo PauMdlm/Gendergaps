@@ -1,0 +1,237 @@
+---
+title: "2bis. Total 2_3_4 for 2019_2020"
+author:
+  - Pauline Martinot [UNICOG, NeuroSpin]
+date: "July 2023"
+output:
+  pdf_document:
+    toc: yes
+  html_document:
+    number_sections: no
+    toc: yes
+    toc_depth: 2
+abstract: | 
+  This notebook concerns data from National assessment in 1st and 2nd grade in France : Composite covariate creation. This notebook comes after the preprocessing notebook, and create all the composite covariates, along with normalization of grades, and creation of the rank covariates. The input can be either an imputed data set, or a data set filtered from the missing values as detailed in preprocess.
+---
+
+
+## Load DATA 
+
+Selected classes are 
+- from 6 to 27 children per class
+- with normal Age in first grade (69 to 80 mo included)
+- minimum with 30% of boys or 30% of girls = to be tested 
+
+
+
+Data from SCRIPT 3
+- joined
+- FROM : imputed_after_2_composite_covariate.RData
+- Math : mean in percentage 0 to 100
+
+Data from joined with Gaussianization
+- Joined_Fin_3
+- GAUSSIANIZED : Gaussianize function applied to all numerical variables
+
+Data from Joined_Fin_3 with selection on Normal age 
+- DATA_AGE_gau_Base_n
+
+Data from Joined_Fin_3 with _n and selection on 30% boys/girls
+- DATA_AGE_gau_Base_n_30n 
+
+
+```{r}
+knitr::opts_chunk$set(echo = TRUE)
+
+# Parameters to set before launch of the pipeline
+
+ANNEE_COHORTE = "2018" # 2019 #2020
+
+library(tidyverse)
+library(dplyr)
+library(reshape2)
+library(MatchIt)
+library(patchwork)
+library(lmerTest)
+library(glmertree)
+library(performance)
+library(broom)
+
+
+
+load("~/Data/cohort_2018_imputed_ModRegLin_Gau_From_joined_V27102023.RData")
+
+
+
+```
+
+
+# Growth Models 12012024
+
+Prendre DATA_AGE_Gau_n ?
+
+```{r}
+
+DATA_1 <- DATA_AGE_gau_Base_n[ , c("ID_Eleve", "T1_Math", "T2_Math", "T3_Math")]
+
+DATA_2 <- DATA_1 %>% 
+  pivot_longer(!ID_Eleve,
+               names_to = 'time',
+               values_to = 'math',
+               names_transform = list(math = as.numeric))
+
+DATA_2["time"][DATA_2["time"] == "T1_Math"] <- "0"
+DATA_2["time"][DATA_2["time"] == "T2_Math"] <- "4"
+DATA_2["time"][DATA_2["time"] == "T3_Math"] <- "12"
+DATA_2$time <- as.numeric(DATA_2$time)
+
+Base_2 <- DATA_AGE_gau_Base_n[, c("ID_Eleve", "Age_CP", "T1_Language", "ID_etab_class", "Sexe_Num", "IPS_Etab_CP", "boy_proportion", "Taille_Classe", "First_sexe_in_T1_Math",  "heterogeneity_T1_Math")]
+
+DATA_6 <- merge(DATA_2, Base_2, by = "ID_Eleve")
+
+DATA <- DATA_6
+
+rm(DATA_1, DATA_2,  DATA_6, Base_2)
+
+```
+
+# Growth Model simple
+
+```{r}
+
+model1 <- lmer(math ~
+
+                 time +
+                 Age_CP + 
+                 Sexe_Num +
+                 
+                 Sexe_Num*time +
+                 Sexe_Num*Age_CP + 
+                 Age_CP*time +
+                 
+                 (1 + time | ID_Eleve) +
+                 (1 + Sexe_Num + time | ID_etab_class), 
+               
+                 data = DATA,  REML = FALSE)
+
+summary(model1)
+m1 <- coef(summary(model1))
+
+write.csv2(m1, file= paste0("/Users/paulinemartinot/Desktop/Growth_Model_2018_Simple.csv"), row.names = F)
+
+
+
+
+# Growth Model Complexe sans langage
+
+
+
+model2 <- lmer(math ~
+
+                 time +
+                 
+                 Age_CP +
+                 Sexe_Num +
+
+                 First_sexe_in_T1_Math +
+                 IPS_Etab_CP +
+                 Taille_Classe +
+                 boy_proportion +
+                 heterogeneity_T1_Math +
+                 
+                 Sexe_Num*time +
+                 Sexe_Num*Age_CP + 
+                 Age_CP*time +
+                 
+                
+                 time*First_sexe_in_T1_Math +
+                 time*IPS_Etab_CP +
+                 time*Taille_Classe +
+                 time*boy_proportion +
+                 time*heterogeneity_T1_Math +
+             
+                 Sexe_Num*First_sexe_in_T1_Math +
+                 Sexe_Num*IPS_Etab_CP +
+                 Sexe_Num*Taille_Classe +
+                 Sexe_Num*boy_proportion+
+                 Sexe_Num*heterogeneity_T1_Math +
+                 
+                 time*Sexe_Num*Age_CP +
+                 time*Sexe_Num*First_sexe_in_T1_Math +
+                 time*Sexe_Num*IPS_Etab_CP +
+                 time*Sexe_Num*Taille_Classe +
+                 time*Sexe_Num*boy_proportion+
+                 time*Sexe_Num*heterogeneity_T1_Math +
+                 
+                 (1 + time | ID_Eleve) +
+                 (1 + Sexe_Num + time | ID_etab_class),
+               
+                 data = DATA,  REML = FALSE)
+
+summary(model2)
+m2 <- coef(summary(model2))
+write.csv2(m2, file= paste0("/Users/paulinemartinot/Desktop/Growth_Model_2018_Complexe_sans_Lang.csv"), row.names = F)
+
+rm(model2, m2)
+
+
+
+# Growth Model Complexe avec langage
+
+
+
+model3 <- lmer(math ~
+
+                 time +
+                 
+                 Age_CP +
+                 Sexe_Num +
+                 T1_Language +
+
+                 First_sexe_in_T1_Math +
+                 IPS_Etab_CP +
+                 Taille_Classe +
+                 boy_proportion +
+                 heterogeneity_T1_Math +
+                 
+                 Sexe_Num*time +
+                 Sexe_Num*Age_CP + 
+                 Age_CP*time +
+
+                 time*T1_Language +
+                 time*First_sexe_in_T1_Math +
+                 time*IPS_Etab_CP +
+                 time*Taille_Classe +
+                 time*boy_proportion +
+                 time*heterogeneity_T1_Math +
+             
+                 Sexe_Num*T1_Language +
+                 Sexe_Num*First_sexe_in_T1_Math +
+                 Sexe_Num*IPS_Etab_CP +
+                 Sexe_Num*Taille_Classe +
+                 Sexe_Num*boy_proportion+
+                 Sexe_Num*heterogeneity_T1_Math +
+                 
+                 time*Sexe_Num*Age_CP +
+                 time*Sexe_Num*T1_Language +
+                 time*Sexe_Num*First_sexe_in_T1_Math +
+                 time*Sexe_Num*IPS_Etab_CP +
+                 time*Sexe_Num*Taille_Classe +
+                 time*Sexe_Num*boy_proportion+
+                 time*Sexe_Num*heterogeneity_T1_Math +
+                 
+                 (1 + time | ID_Eleve) +
+                 (1 + Sexe_Num + time | ID_etab_class),
+               
+                 data = DATA,  REML = FALSE)
+
+summary(model3)
+m3 <- coef(summary(model3))
+
+write.csv2(m3, file= paste0("/Users/paulinemartinot/Desktop/Growth_Model_2018_Complexe_with_Lang.csv"), row.names = F)
+
+
+
+```
+
+
