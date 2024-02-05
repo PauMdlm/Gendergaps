@@ -1,5 +1,5 @@
 (1) System requirements
-   - software used : R, latest version
+   - software used : R 4.3.2, latest version
    - we added a small simulated dataset to demo the code
      
 (2) Installation guide
